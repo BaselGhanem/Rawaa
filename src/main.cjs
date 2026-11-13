@@ -75,18 +75,12 @@ function makeWindow(display, settings) {
     alwaysOnTop: true, title: 'رواء',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
-  const glass = windowsOS ? new BrowserWindow({
-    ...boundsFor(display, settings), show: false, frame: false, backgroundColor: '#00000000',
-    backgroundMaterial: 'acrylic', skipTaskbar: true, focusable: false, resizable: false,
-    alwaysOnTop: true, hasShadow: false, webPreferences: { sandbox: true }
-  }) : null;
-  glass?.setIgnoreMouseEvents(true);
-  const entry = { win, glass, ready: false, revealed: false, manual: false, fullscreen: false };
+  const entry = { win, ready: false, revealed: false, manual: false, fullscreen: false };
   windows.set(display.id, entry);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.once('ready-to-show', () => { entry.ready = true; tick(); });
-  win.on('closed', () => { glass?.destroy(); if (windows.get(display.id) === entry) windows.delete(display.id); });
+  win.on('closed', () => { if (windows.get(display.id) === entry) windows.delete(display.id); });
   win.loadFile(path.join(__dirname, 'index.html'), { query: { display: String(display.id) } });
 }
 
@@ -136,26 +130,6 @@ function tick() {
     if (fullscreen && !entry.fullscreen) entry.overrideFullscreen = false;
     entry.fullscreen = fullscreen;
     const show = (!fullscreen || entry.overrideFullscreen) && (entry.manual || (!entry.suppressed && (settings.mode === 'fixed' || entry.revealed)));
-    const { glass, panel } = entry;
-    if (glass && panel && show && state.prefs.blur) {
-      const shape = { x: bounds.x + panel.x, y: bounds.y + panel.y, width: panel.width, height: panel.height };
-      const current = glass.getBounds();
-      if (Object.keys(shape).some(key => shape[key] !== current[key])) glass.setBounds(shape);
-      if (entry.glassWidth !== shape.width || entry.glassHeight !== shape.height) {
-        const radius = Math.min(39, Math.floor(shape.width / 2), Math.floor(shape.height / 2));
-        const strips = [];
-        for (let i = 0; i < radius; i++) {
-          const pad = Math.ceil(radius - Math.sqrt(radius ** 2 - (radius - i - .5) ** 2));
-          strips.push({ x: pad, y: i, width: shape.width - 2 * pad, height: 1 });
-          strips.push({ x: pad, y: shape.height - i - 1, width: shape.width - 2 * pad, height: 1 });
-        }
-        if (shape.height > 2 * radius) strips.push({ x: 0, y: radius, width: shape.width, height: shape.height - 2 * radius });
-        glass.setShape(strips);
-        entry.glassWidth = shape.width;
-        entry.glassHeight = shape.height;
-      }
-      if (!glass.isVisible()) { glass.showInactive(); if (entry.win.isVisible()) entry.win.moveTop(); }
-    } else if (glass?.isVisible()) glass.hide();
     if (show && !entry.win.isVisible()) entry.win.showInactive();
     if (!show && entry.win.isVisible()) entry.win.hide();
     if (show && windowsOS) {
@@ -307,6 +281,16 @@ function setupUpdates() {
   setInterval(check, 4 * 60 * 60 * 1000).unref();
 }
 
+async function fileIcon(target) {
+  if (!path.isAbsolute(target)) return '';
+  if (!imageCache.has(target)) {
+    if (imageCache.size > 250) imageCache.clear();
+    const image = await app.getFileIcon(target, { size: 'normal' }).catch(() => null);
+    if (image) imageCache.set(target, image.toDataURL());
+  }
+  return imageCache.get(target) || '';
+}
+
 function registerHandlers() {
   const handle = (channel, fn) => ipcMain.handle(channel, (event, value) => {
     const entry = [...windows.values()].find(candidate => candidate.win.webContents === event.sender);
@@ -328,10 +312,7 @@ function registerHandlers() {
   });
   handle('geometry', (entry, value) => {
     const valid = rect => rect && ['x', 'y', 'width', 'height'].every(key => Number.isInteger(rect[key]) && rect[key] >= 0 && rect[key] <= 2000) && rect.width > 0 && rect.height > 0;
-    if (valid(value?.panel) && valid(value?.hit)) {
-      entry.panel = value.panel;
-      entry.hit = value.hit;
-    }
+    if (valid(value)) entry.hit = value;
   });
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {
@@ -339,15 +320,17 @@ function registerHandlers() {
     return (await Promise.all(result.filePaths.map(describe))).filter(Boolean);
   });
   handle('paths', async (_entry, paths) => (await Promise.all((Array.isArray(paths) ? paths.slice(0, 100) : []).map(describe))).filter(Boolean));
-  handle('icon', async (_entry, id) => {
+  handle('open-apps', async () => {
+    if (!windowsOS) return [];
+    const { stdout } = await native('list', ['-OwnerPid', String(process.pid)]);
+    const entries = stdout.trim() ? JSON.parse(stdout) : [];
+    return Promise.all(entries.map(async entry => ({
+      kind: 'app', name: entry.name, target: entry.target, image: await fileIcon(entry.target)
+    })));
+  });
+  handle('icon', (_entry, id) => {
     const item = state.items.find(value => value.id === id);
-    if (!item || !['app', 'file', 'folder'].includes(item.kind) || !path.isAbsolute(item.target)) return '';
-    if (!imageCache.has(item.target)) {
-      if (imageCache.size > 250) imageCache.clear();
-      const image = await app.getFileIcon(item.target, { size: 'normal' }).catch(() => null);
-      if (image) imageCache.set(item.target, image.toDataURL());
-    }
-    return imageCache.get(item.target) || '';
+    return item && ['app', 'file', 'folder'].includes(item.kind) ? fileIcon(item.target) : '';
   });
   handle('launch', async (_entry, id) => {
     const item = state.items.find(value => value.id === id);

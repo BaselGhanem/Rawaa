@@ -1,4 +1,4 @@
-param([ValidateSet('monitor','activate','place','resolve')][string]$Action, [string]$Target, [int]$X, [int]$Y, [int]$Width, [int]$Height)
+param([ValidateSet('monitor','activate','place','resolve','list')][string]$Action, [string]$Target, [int]$X, [int]$Y, [int]$Width, [int]$Height, [uint32]$OwnerPid)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 if ($Action -eq 'resolve') {
@@ -11,6 +11,7 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Collections.Generic;
 public static class Native {
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
     public delegate bool Callback(IntPtr window, IntPtr data);
@@ -27,6 +28,24 @@ public static class Native {
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int d, uint f);
     [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder b, int max);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder text, int max);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out int value, int size);
+    public static string[] OpenApps(uint owner) {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        EnumWindows(delegate(IntPtr hwnd, IntPtr ignored) {
+            if (!IsWindowVisible(hwnd) || GetWindow(hwnd,4) != IntPtr.Zero) return true;
+            uint pid; GetWindowThreadProcessId(hwnd, out pid);
+            if (pid == owner) return true;
+            int cloaked;
+            if (DwmGetWindowAttribute(hwnd,14,out cloaked,4) == 0 && cloaked != 0) return true;
+            var title = new StringBuilder(2);
+            if (GetWindowText(hwnd,title,title.Capacity) == 0) return true;
+            string image = Image(hwnd);
+            if (image.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) paths.Add(image);
+            return true;
+        }, IntPtr.Zero);
+        return new List<string>(paths).ToArray();
+    }
     [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint id);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder text, ref int size);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
@@ -52,6 +71,19 @@ public static class Native {
     }
 }
 '@
+if ($Action -eq 'list') {
+    $apps = @(foreach ($exe in [Native]::OpenApps($OwnerPid)) {
+        $name = [IO.Path]::GetFileNameWithoutExtension($exe)
+        if ($name -in @('ApplicationFrameHost', 'SystemSettings', 'TextInputHost', 'SearchHost', 'ShellExperienceHost', 'StartMenuExperienceHost')) { continue }
+        try {
+            $description = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileDescription
+            if (![string]::IsNullOrWhiteSpace($description)) { $name = $description.Trim() }
+        } catch {}
+        [PSCustomObject]@{ name = $name; target = $exe }
+    })
+    ConvertTo-Json -InputObject @($apps | Sort-Object name | Select-Object -First 60) -Compress
+    exit
+}
 [void][Native]::SetThreadDpiAwarenessContext([IntPtr](-4))
 if ($Action -eq 'monitor') {
     while ($true) {

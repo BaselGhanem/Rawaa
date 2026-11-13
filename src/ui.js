@@ -12,7 +12,7 @@ const visibleItems = () => state.items.filter(item => item.shared || item.space 
 let state;
 let displays;
 let compact;
-let selected;
+
 let dragged;
 let toastTimeout;
 let updateStatus;
@@ -150,7 +150,7 @@ function draw() {
 }
 
 function nativeIcon(item, node) {
-  if (state.prefs.icons !== 'native' || item.icon || !['app', 'file', 'folder'].includes(item.kind)) return;
+  if ((state.prefs.icons !== 'native' && item.kind !== 'app') || item.icon || !['app', 'file', 'folder'].includes(item.kind)) return;
   const key = `${item.id}|${item.target}`;
   if (!nativeIcons.has(key)) {
     if (nativeIcons.size > 250) nativeIcons.clear();
@@ -158,23 +158,24 @@ function nativeIcon(item, node) {
   }
   nativeIcons.get(key).then(source => {
     if (!source || !node.isConnected) return;
-    const image = el('img');
+    const image = el('img', 'app-icon');
     image.src = source;
     image.alt = '';
     node.firstElementChild.replaceWith(image);
   });
 }
 
-async function run(item) {
-  selected = item.id;
-  drawEntries();
+async function run(item, node) {
+  if (node?.classList.contains('launching')) return;
+  node?.classList.add('launching');
+  const started = performance.now();
   try { toast(await api.launch(item.id)); }
   catch (error) { errorMessage(error); }
+  finally { setTimeout(() => node?.classList.remove('launching'), Math.max(0, 420 - (performance.now() - started))); }
 }
 
 function makeItem(item) {
-  const node = row(item.name, iconOptions.includes(item.icon) ? item.icon : kindIcons[item.kind], () => run(item));
-  node.classList.toggle('selected', selected === item.id);
+  const node = row(item.name, iconOptions.includes(item.icon) ? item.icon : kindIcons[item.kind], () => run(item, node));
   nativeIcon(item, node);
   node.draggable = true;
   node.addEventListener('dragstart', event => {
@@ -272,7 +273,10 @@ function drawEntries() {
   entries.scrollTop = scroll;
 }
 
-function closeSheet() { $('sheet').hidden = true; }
+function closeSheet() {
+  const sheet = $('sheet');
+  sheet.hidden = true;
+}
 
 function showSheet(title, content) {
   if (compact) { compact = false; styles(); }
@@ -286,6 +290,7 @@ function showSheet(title, content) {
   body.append(content);
   sheet.replaceChildren(header, body);
   sheet.hidden = false;
+  animate(sheet, [{ opacity: .35, transform: 'translateY(9px) scale(.98)' }, { opacity: 1, transform: 'none' }]);
   sheet.querySelector('input:not([type=checkbox]),select')?.focus({ preventScroll: true });
 }
 
@@ -322,8 +327,8 @@ function confirmRemoval(name, onRemove) {
   showSheet('تاكيد الحذف', box);
 }
 
-function editor(existing, initialGroup = '') {
-  const current = existing || { id: uid(), name: '', kind: 'app', target: '', icon: '', space: state.active, group: initialGroup, children: [], layout: [] };
+function editor(existing, initialGroup = '', initialKind = 'app') {
+  const current = existing || { id: uid(), name: '', kind: initialKind, target: '', icon: '', space: state.active, group: initialGroup, children: [], layout: [] };
   const form = el('form');
   const name = input('text', current.name, { required: true, maxLength: 100 });
   const kind = choice(Object.entries(kinds), current.kind);
@@ -427,18 +432,68 @@ async function addPaths(paths) {
   })) toast(`تمت اضافة ${paths.length}`);
 }
 
-function addMenu() {
-  const box = el('div');
-  box.append(
-    row('تطبيق او ملف او رابط', 'plus-circle', () => editor()),
+async function addMenu() {
+  const box = el('div', 'add-panel');
+  const search = input('search', '', { placeholder: 'ابحث عن تطبيق مفتوح' });
+  search.className = 'app-search';
+  search.setAttribute('aria-label', 'ابحث عن تطبيق مفتوح');
+  const listing = el('div', 'app-list');
+  listing.setAttribute('aria-live', 'polite');
+  const actions = el('div', 'add-actions');
+  actions.append(
+    row('ملف او رابط او تطبيق اخر', 'file-plus', () => editor()),
     row('مجلد من الجهاز', 'folder', async () => {
       try { await addPaths(await api.choose('folder')); closeSheet(); }
       catch (error) { errorMessage(error); }
     }),
     row('مجموعة جديدة', 'stack', () => editGroup()),
-    row('زر يفتح عدة عناصر', 'rocket-launch', () => editor({ id: uid(), name: '', kind: 'bundle', space: state.active, children: [], layout: [] }))
+    row('زر يفتح عدة عناصر', 'rocket-launch', () => editor(null, '', 'bundle'))
   );
-  showSheet('اضافة', box);
+  box.append(el('div', 'section', 'التطبيقات المفتوحة'), search, listing, actions);
+  showSheet('اضافة اختصار', box);
+  let apps = [];
+  function render() {
+    const q = search.value.trim().toLocaleLowerCase();
+    const matches = apps.filter(app => app.name.toLocaleLowerCase().includes(q));
+    listing.replaceChildren();
+    if (!matches.length) listing.append(el('p', 'empty', q ? 'ما في تطبيق مطابق' : 'ما في تطبيقات مفتوحة متاحة للاضافة'));
+    for (const app of matches) {
+      const exists = () => visibleItems().some(item => item.kind === 'app' && item.target.toLowerCase() === app.target.toLowerCase());
+      const line = row(app.name, 'app-window', async () => {
+        if (exists() || line.disabled) return;
+        line.disabled = true;
+        const saved = await change(next => {
+          const { name, kind, target } = app;
+          next.items.push({ id: uid(), name, kind, target, space: next.active });
+        });
+        if (saved) { render(); toast('تمت اضافة التطبيق'); }
+        else line.disabled = false;
+      });
+      line.classList.add('app-option');
+      const alreadyAdded = exists();
+      line.disabled = alreadyAdded;
+      const indicator = icon(alreadyAdded ? 'check' : 'plus');
+      indicator.classList.add('tail');
+      line.append(indicator);
+      if (app.image) {
+        const image = el('img', 'app-icon');
+        image.src = app.image;
+        image.alt = '';
+        line.firstElementChild.replaceWith(image);
+      }
+      listing.append(line);
+    }
+  }
+  listing.append(el('p', 'empty loading-apps', 'جاري قراءة التطبيقات المفتوحة'));
+  search.disabled = true;
+  try {
+    apps = await api.openApps();
+    search.disabled = false;
+    search.addEventListener('input', render);
+    render();
+  } catch {
+    listing.replaceChildren(el('p', 'empty', 'تعذر قراءة التطبيقات المفتوحة'), button('اعادة المحاولة', addMenu));
+  }
 }
 
 function editGroup(existing) {
@@ -598,6 +653,12 @@ function calendar(month = new Date()) {
   showSheet('التقويم', content);
 }
 
+function animate(node, frames) {
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    node.animate(frames, { duration: 210, easing: 'cubic-bezier(.2,.75,.2,1)' });
+  }
+}
+
 function reportGeometry() {
   const panel = $('shell').getBoundingClientRect();
   const fold = $('fold').getBoundingClientRect();
@@ -605,10 +666,7 @@ function reportGeometry() {
     x: Math.max(0, Math.round(left)), y: Math.max(0, Math.round(top)),
     width: Math.round(right - left), height: Math.round(bottom - top)
   });
-  api.geometry({
-    panel: toRect(panel.left, panel.top, panel.right, panel.bottom),
-    hit: toRect(Math.min(panel.left, fold.left), panel.top, Math.max(panel.right, fold.right), panel.bottom)
-  }).catch(() => {});
+  api.geometry(toRect(Math.min(panel.left, fold.left), panel.top, Math.max(panel.right, fold.right), panel.bottom)).catch(() => {});
 }
 
 function wire() {
@@ -639,6 +697,7 @@ function wire() {
     const rect = anchor.getBoundingClientRect();
     tip.textContent = anchor.dataset.tip;
     tip.hidden = false;
+    animate(tip, [{ opacity: 0, transform: 'translateY(3px)' }, { opacity: 1, transform: 'none' }]);
     const available = config().side === 'left' ? innerWidth - rect.right : rect.left;
     tip.style.maxWidth = `${Math.min(150, available - 10)}px`;
     tip.style.left = `${config().side === 'left' ? rect.right + 10 : rect.left - tip.offsetWidth - 10}px`;
