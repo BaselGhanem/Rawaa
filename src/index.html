@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>رواء | Rawaa</title>
+<link rel="stylesheet" href="../node_modules/@fontsource/almarai/400.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/almarai/700.css">
+<link rel="stylesheet" href="../node_modules/@phosphor-icons/web/src/regular/style.css">
+<link rel="stylesheet" href="style.css">
+<script defer src="ui.js"></script>
+</head>
+<body>
+<main id="shell" class="shell">
+  <header class="brand">
+    <button id="spaces" class="mark" title="مساحات العمل" aria-label="مساحات العمل"><img src="rawaa.png" alt=""></button>
+    <button id="space-name" class="wordmark"><strong>رواء</strong><span id="current-space"></span></button>
+    <button id="fold" class="fold" aria-label="تصغير الشريط"></button>
+  </header>
+  <section class="search-wrap">
+    <button id="search-icon" class="search-icon" aria-label="بحث"><i class="ph ph-magnifying-glass"></i></button>
+    <input id="search" type="search" autocomplete="off" placeholder="ابحث في اختصاراتك" aria-label="ابحث في اختصاراتك">
+  </section>
+  <div id="entries" class="entries"></div>
+  <footer class="footer">
+    <button id="add" class="row foot-row" data-tip="اضافة عنصر"><i class="ph ph-plus-circle"></i><span>اضافة عنصر</span></button>
+    <button id="settings" class="row foot-row" data-tip="الاعدادات"><i class="ph ph-gear"></i><span>الاعدادات</span></button>
+    <button id="date" class="row clock" data-tip="التقويم"><i class="ph ph-clock"></i><span><strong id="time"></strong><small id="date-label"></small></span><i class="ph ph-calendar-blank tail"></i></button>
+  </footer>
+  <section id="sheet" class="sheet" hidden></section>
+</main>
+<div id="tip" role="tooltip" hidden></div>
+<div id="toast" role="status" hidden></div>
+</body>
+</html>

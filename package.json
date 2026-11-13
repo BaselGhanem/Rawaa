@@ -1,0 +1,72 @@
+{
+  "name": "rawaa",
+  "version": "1.0.0",
+  "description": "Rawaa desktop launcher for Windows 11",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/ui.js && node --check src/store.cjs",
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BaselGhanem/Rawaa.git"
+  },
+  "keywords": [],
+  "author": "Basel Ghanem",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/BaselGhanem/Rawaa/issues"
+  },
+  "homepage": "https://github.com/BaselGhanem/Rawaa#readme",
+  "dependencies": {
+    "@fontsource/almarai": "5.3.0",
+    "@phosphor-icons/web": "2.1.2",
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
+    "electron": "42.11.18",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.baselghanem.rawaa",
+    "productName": "Rawaa",
+    "artifactName": "Rawaa-Setup-${version}.${ext}",
+    "files": [
+      "src/**",
+      "!src/windows.ps1",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src/windows.ps1",
+        "to": "windows.ps1"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "BaselGhanem",
+      "repo": "Rawaa",
+      "releaseType": "release"
+    }
+  }
+}
