@@ -17,6 +17,7 @@ let compact;
 let paletteIndex = 0;
 
 let dragged;
+let trayMotion;
 let toastTimeout;
 let updateStatus;
 let version;
@@ -92,14 +93,20 @@ function formActions(save, extras = []) {
   return actions;
 }
 
-function toast(message) {
+function toast(message, undo) {
   if (!message) return;
   const node = $('toast');
   clearTimeout(toastTimeout);
-  node.textContent = message;
+  node.replaceChildren(document.createTextNode(message));
+  if (undo) node.append(button(`تراجع`, () => {
+    node.hidden = true;
+    reportGeometry();
+    undo();
+  }, `plain`));
+  node.classList.toggle(`undo-toast`, Boolean(undo));
   node.hidden = false;
   reportGeometry();
-  toastTimeout = setTimeout(() => { node.hidden = true; reportGeometry(); }, 3500);
+  toastTimeout = setTimeout(() => { node.hidden = true; reportGeometry(); }, undo ? 6500 : 3500);
 }
 
 function errorMessage(error) {
@@ -188,6 +195,7 @@ async function run(item, node) {
 function makeItem(item) {
   const node = row(item.name, iconOptions.includes(item.icon) ? item.icon : kindIcons[item.kind], () => run(item, node));
   node.classList.add('shortcut-row');
+  node.dataset.shortcutId = item.id;
   nativeIcon(item, node);
   node.draggable = true;
   node.addEventListener('dragstart', event => {
@@ -195,7 +203,10 @@ function makeItem(item) {
     event.dataTransfer.setData('text/plain', item.id);
     event.dataTransfer.effectAllowed = 'move';
   });
-  node.addEventListener('dragend', () => { dragged = null; });
+  node.addEventListener('dragend', () => {
+    dragged = null;
+    document.querySelectorAll(`.target`).forEach(target => target.classList.remove(`target`));
+  });
   node.addEventListener('contextmenu', event => { event.preventDefault(); itemMenu(item); });
   node.addEventListener('keydown', event => {
     if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
@@ -217,15 +228,22 @@ function dropTarget(node, group, before) {
     event.dataTransfer.dropEffect = 'move';
     node.classList.add('target');
   });
-  node.addEventListener('dragleave', () => node.classList.remove('target'));
-  node.addEventListener('drop', event => {
+  node.addEventListener('dragleave', event => {
+    if (!node.contains(event.relatedTarget)) node.classList.remove('target');
+  });
+  node.addEventListener('drop', async event => {
     if (!dragged || dragged === before) return;
     event.preventDefault();
     event.stopPropagation();
     node.classList.remove('target');
     const moving = dragged;
     dragged = null;
-    change(next => {
+    const originalIndex = state.items.findIndex(item => item.id === moving);
+    if (originalIndex < 0) return;
+    const original = state.items[originalIndex];
+    const previous = state.items[originalIndex - 1]?.id;
+    const following = state.items[originalIndex + 1]?.id;
+    const saved = await change(next => {
       const index = next.items.findIndex(item => item.id === moving);
       if (index < 0) return;
       const [item] = next.items.splice(index, 1);
@@ -236,6 +254,19 @@ function dropTarget(node, group, before) {
       const destination = next.items.findIndex(entry => entry.id === before);
       next.items.splice(destination < 0 ? next.items.length : destination, 0, item);
     });
+    if (saved) {
+      const moved = document.querySelector(`[data-shortcut-id="${CSS.escape(moving)}"]`);
+      if (moved) animate(moved, [{ opacity: .55, translate: `0 -6px` }, { opacity: 1, translate: `0 0` }]);
+      toast(`تم ترتيب الاختصار`, () => change(next => {
+        const index = next.items.findIndex(item => item.id === moving);
+        if (index < 0) return;
+        const [item] = next.items.splice(index, 1);
+        Object.assign(item, { group: original.group, space: original.space, pinned: original.pinned });
+        const after = next.items.findIndex(item => item.id === following);
+        const before = next.items.findIndex(item => item.id === previous);
+        next.items.splice(after >= 0 ? after : before >= 0 ? before + 1 : originalIndex, 0, item);
+      }));
+    }
   });
 }
 
@@ -313,6 +344,7 @@ function closeSheet() {
 }
 
 function showSheet(title, content) {
+  if (!$(`clock-calendar`).hidden) toggleCalendar(false);
   if (compact) { compact = false; styles(); }
   $('tip').hidden = true;
   const sheet = $('sheet');
@@ -331,6 +363,7 @@ function showSheet(title, content) {
 }
 
 function setCompact(value) {
+  if (!$(`clock-calendar`).hidden) toggleCalendar(false);
   compact = value;
   closeSheet();
   $('search').value = '';
@@ -744,6 +777,33 @@ function clock() {
   $('date').dataset.tip = `${time} · التقويم`;
 }
 
+function toggleCalendar(open = $(`clock-calendar`).hidden) {
+  const panel = $(`clock-calendar`);
+  const trigger = $(`date`);
+  if (open) {
+    $(`shell`).classList.add(`calendar-open`);
+    calendar();
+    panel.hidden = false;
+    animate(panel, [
+      { opacity: 0, transform: `translateY(9px) scale(.94)` },
+      { opacity: 1, transform: `none` }
+    ]);
+  } else {
+    panel.hidden = true;
+    $(`shell`).classList.remove(`calendar-open`);
+  }
+  trigger.setAttribute(`aria-expanded`, String(open));
+  if (open && compact) {
+    compact = false;
+    styles();
+    panel.dataset.restoreCompact = `true`;
+  } else if (!open && panel.dataset.restoreCompact) {
+    delete panel.dataset.restoreCompact;
+    compact = config().compact;
+    styles();
+  }
+}
+
 function calendar(month = new Date()) {
   const year = month.getFullYear();
   const index = month.getMonth();
@@ -770,7 +830,7 @@ function calendar(month = new Date()) {
     days.append(cell);
   }
   content.append(header, days, button('اليوم', () => calendar(), 'secondary'));
-  showSheet('التقويم', content);
+  $(`clock-calendar`).replaceChildren(content);
 }
 
 function animate(node, frames) {
@@ -852,7 +912,7 @@ function wire() {
   $(`fold`).addEventListener('click', () => setCompact(!compact));
   $('spaces').addEventListener('click', spaces);
   $('space-name').addEventListener('click', spaces);
-  $('date').addEventListener('click', () => calendar());
+  $(`date`).addEventListener(`click`, () => toggleCalendar());
   $('add').addEventListener('click', addMenu);
   $('settings').addEventListener('click', settings);
   $(`search-icon`).addEventListener(`click`, () => {
@@ -875,32 +935,53 @@ function wire() {
   });
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
-    if (!$('sheet').hidden) closeSheet();
+    if (!$(`clock-calendar`).hidden) toggleCalendar(false);
+    else if (!$('sheet').hidden) closeSheet();
     else if (!isPalette && $('search').value) { $('search').value = ''; drawEntries(); }
     else api.hide();
   });
-  document.addEventListener('pointerover', event => {
-    const anchor = event.target.closest('[data-tip]');
-    if (!compact || !anchor || anchor.contains(event.relatedTarget)) return;
-    const tip = $('tip');
-    const rect = anchor.getBoundingClientRect();
-    tip.textContent = anchor.dataset.tip;
-    tip.hidden = false;
-
-    const available = config().side === 'left' ? innerWidth - rect.right : rect.left;
-    tip.style.maxWidth = `${Math.min(150, available - 10)}px`;
-    tip.style.left = `${config().side === 'left' ? rect.right + 10 : rect.left - tip.offsetWidth - 10}px`;
-    tip.style.top = `${rect.top + (rect.height - tip.offsetHeight) / 2}px`;
+  const tip = $(`tip`);
+  let tipTimer;
+  let lastTip = -Infinity;
+  function dismissTip() {
+    clearTimeout(tipTimer);
+    if (tip.hidden) return;
+    tip.hidden = true;
+    lastTip = performance.now();
     reportGeometry();
-    animate(tip, [{ opacity: 0 }, { opacity: 1 }]);
-  });
-  document.addEventListener('pointerout', event => {
-    const anchor = event.target.closest('[data-tip]');
-    if (anchor && !anchor.contains(event.relatedTarget)) {
-      $('tip').hidden = true;
+  }
+  function queueTip(anchor) {
+    if (!compact || !anchor || dragged) return;
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => {
+      if (!anchor.isConnected || !compact) return;
+      const rect = anchor.getBoundingClientRect();
+      const left = config().side === `left`;
+      const available = left ? innerWidth - rect.right : rect.left;
+      if (available < 36) return;
+      tip.textContent = anchor.dataset.tip;
+      tip.hidden = false;
+      tip.style.maxWidth = `${Math.min(180, available - 12)}px`;
+      tip.style.left = `${left ? rect.right + 8 : rect.left - tip.offsetWidth - 8}px`;
+      tip.style.top = `${Math.max(4, Math.min(innerHeight - tip.offsetHeight - 4, rect.top + (rect.height - tip.offsetHeight) / 2))}px`;
       reportGeometry();
-    }
+      animate(tip, [{ opacity: .2, translate: left ? `-4px 0` : `4px 0` }, { opacity: 1, translate: `0 0` }]);
+    }, performance.now() - lastTip < 220 ? 30 : 320);
+  }
+  shell.addEventListener(`pointerover`, event => {
+    const anchor = event.target.closest(`[data-tip]`);
+    if (event.pointerType !== `touch` && anchor && !anchor.contains(event.relatedTarget)) queueTip(anchor);
   });
+  shell.addEventListener(`pointerout`, event => {
+    const anchor = event.target.closest(`[data-tip]`);
+    if (anchor && !anchor.contains(event.relatedTarget)) dismissTip();
+  });
+  shell.addEventListener(`focusin`, event => {
+    if (event.target.matches(`:focus-visible`)) queueTip(event.target.closest(`[data-tip]`));
+  });
+  shell.addEventListener(`focusout`, dismissTip);
+  shell.addEventListener(`dragstart`, dismissTip);
+  $(`entries`).addEventListener(`scroll`, dismissTip, { passive: true });
   $('shell').addEventListener('dragover', event => {
     if (event.dataTransfer.types.includes('Files')) event.preventDefault();
   });
@@ -925,6 +1006,21 @@ api.load().then(data => {
     draw();
   });
   api.on('search-focus', searchFocus);
+  api.on(`tray-motion`, ({ x, y, closing }) => {
+    trayMotion?.cancel();
+    if (matchMedia(`(prefers-reduced-motion: reduce)`).matches) return;
+    const shell = $(`shell`);
+    const rect = shell.getBoundingClientRect();
+    const fromX = Math.max(8, Math.min(rect.width - 8, x - rect.left));
+    const fromY = Math.max(8, Math.min(rect.height - 8, y - rect.top));
+    const expanded = { clipPath: `inset(0 round 28px)`, opacity: 1 };
+    const collapsed = {
+      clipPath: `inset(${fromY - 8}px ${rect.width - fromX - 8}px ${rect.height - fromY - 8}px ${fromX - 8}px round 9px)`,
+      opacity: .15
+    };
+    trayMotion = shell.animate(closing ? [expanded, collapsed] : [collapsed, expanded],
+      { duration: closing ? 225 : 360, easing: `cubic-bezier(.22,.8,.22,1)`, fill: closing ? `forwards` : `none` });
+  });
   api.on('update-status', message => {
     updateStatus = message;
     if ($('update-status')) $('update-status').textContent = message;

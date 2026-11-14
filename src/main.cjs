@@ -19,6 +19,7 @@ const native = (action, extra) => exec(ps, args(action, extra), { windowsHide: t
 let state = defaults();
 let tray;
 let trayOnly = false;
+let trayTransition;
 let palette;
 
 function launcherEntries() {
@@ -188,16 +189,21 @@ function tick() {
 }
 
 function showLauncher(search = false) {
-  if (trayOnly) {
+  const restoring = trayOnly;
+  clearTimeout(trayTransition);
+  if (restoring) {
     trayOnly = false;
     for (const entry of windows.values()) entry.suppressed = false;
     tick();
   }
   const preferred = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  if (search && state.prefs.searchView === 'palette') return showPalette(preferred);
+  if (search && state.prefs.searchView === 'palette') {
+    if (restoring) windows.forEach(entry => sendTrayMotion(entry, false));
+    return showPalette(preferred);
+  }
   const entry = windows.get(preferred.id) || [...windows.values()][0];
   if (!entry) return;
-  if (!search && entry.win.isVisible() && entry.win.isFocused()) {
+  if (!restoring && !search && entry.win.isVisible() && entry.win.isFocused()) {
     hideLauncher(entry);
     return;
   }
@@ -206,12 +212,29 @@ function showLauncher(search = false) {
   entry.overrideFullscreen = true;
   entry.win.show();
   entry.win.focus();
+  if (restoring) windows.forEach(candidate => sendTrayMotion(candidate, false));
   if (search) entry.win.webContents.send('search-focus');
 }
 
-function minimizeToTray() {
+function sendTrayMotion(entry, closing) {
+  const trayBounds = tray?.getBounds();
+  const bounds = entry.win.getBounds();
+  const x = trayBounds?.width ? trayBounds.x + trayBounds.width / 2 - bounds.x : bounds.width / 2;
+  const y = trayBounds?.height ? trayBounds.y + trayBounds.height / 2 - bounds.y : bounds.height;
+  entry.win.webContents.send('tray-motion', { x, y, closing });
+}
+
+function minimizeToTray(entry) {
+  if (trayOnly) return;
   trayOnly = true;
-  launcherEntries().forEach(hideLauncher);
+  for (const candidate of launcherEntries()) {
+    if (candidate !== entry) hideLauncher(candidate);
+  }
+  if (!entry?.win.isVisible()) return;
+  sendTrayMotion(entry, true);
+  trayTransition = setTimeout(() => {
+    if (trayOnly && !entry.win.isDestroyed()) hideLauncher(entry);
+  }, 245);
 }
 
 function hideLauncher(entry) {
@@ -504,7 +527,7 @@ function registerHandlers() {
     else if (firstShape) tick();
   });
   handle('show-search', () => showLauncher(true));
-  handle('minimize-to-tray', () => minimizeToTray());
+  handle('minimize-to-tray', entry => minimizeToTray(entry));
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {
     const result = await dialog.showOpenDialog(entry.win, { properties: kind === 'folder' ? ['openDirectory'] : ['openFile', 'multiSelections'] });
@@ -588,7 +611,7 @@ else {
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'توسيع رواء', click: () => showLauncher() },
       { label: 'بحث سريع', click: () => showLauncher(true) },
-      { label: 'تصغير بجانب الساعة', click: minimizeToTray },
+      { label: 'تصغير بجانب الساعة', click: () => minimizeToTray(launcherEntries().find(entry => entry.win.isFocused())) },
       { type: 'separator' },
       { label: 'اخفاء كلي (خروج)', click: () => app.quit() }
     ]));

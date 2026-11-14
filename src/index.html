@@ -27,7 +27,8 @@
   <footer class="footer">
     <button id="add" class="row foot-row" data-tip="اضافة عنصر"><i class="ph ph-plus-circle"></i><span>اضافة عنصر</span></button>
     <button id="settings" class="row foot-row" data-tip="الاعدادات"><i class="ph ph-gear"></i><span>الاعدادات</span></button>
-    <button id="date" class="row clock" data-tip="التقويم"><span class="clock-face"><span class="clock-reading" dir="ltr"><strong id="time"></strong><small id="clock-period"></small></span><small id="date-label"></small></span><i class="ph ph-calendar-blank tail"></i></button>
+    <section id="clock-calendar" class="clock-calendar" aria-label="التقويم" hidden></section>
+    <button id="date" aria-controls="clock-calendar" aria-expanded="false" class="row clock" data-tip="التقويم"><span class="clock-face"><span class="clock-reading" dir="ltr"><strong id="time"></strong><small id="clock-period"></small></span><small id="date-label"></small></span><i class="ph ph-calendar-blank tail"></i></button>
   </footer>
   <section id="sheet" class="sheet" hidden></section>
 </main>

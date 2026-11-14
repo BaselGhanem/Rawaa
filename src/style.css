@@ -454,3 +454,48 @@ body.compact .clock #date-label { display: none; }
 body.palette .clock #time { font-size: 16px; }
 body.compact .clock .clock-face { display: grid; }
 body.compact .clock .clock-reading { display: flex; }
+
+.clock-calendar {
+  margin-block-start: 6px;
+  padding: 8px;
+  border-radius: 15px;
+  background: #222e32;
+  transform-origin: center bottom;
+  max-height: min(295px, 47vh);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.clock-calendar .days { gap: 2px; }
+.clock-calendar .days span { min-height: 24px; }
+body.palette .clock-calendar { flex: 0 0 100%; order: -1; }
+#entry-list > .target, .group-items > .target {
+  padding-block-start: 23px;
+  position: relative;
+  border-color: transparent;
+}
+#entry-list > .target::before, .group-items > .target::before {
+  content: '';
+  position: absolute;
+  inset: 8px 7px auto;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+#entry-list, .group-items { display: flow-root; }
+#entry-list .row, #entry-list .section { transition: padding-block-start 150ms ease, background-color 170ms ease; }
+#toast.undo-toast { pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#toast.undo-toast button { flex: 0 0 auto; }
+#tip {
+  background: #20282d;
+  color: #f0faf9;
+  border: 1px solid #92c6c24a;
+  border-radius: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+body:not(.palette) .shell.calendar-open { height: min(var(--content-height, 440px), calc(100% - 16px)); }
+body.palette .shell.calendar-open { height: min(var(--content-height, 440px), calc(100% - 24px)); }
+.calendar-open .footer { max-height: calc(100% - 112px); overflow: auto; }

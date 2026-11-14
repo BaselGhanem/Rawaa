@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('rawaa', {
   backup: action => ipcRenderer.invoke('backup', action),
   updates: () => ipcRenderer.invoke('updates'),
   on: (event, callback) => {
-    if (['state', 'search-focus', 'update-status'].includes(event)) {
+    if (['state', 'search-focus', 'tray-motion', 'update-status'].includes(event)) {
       ipcRenderer.on(event, (_event, value) => callback(value));
     }
   }
