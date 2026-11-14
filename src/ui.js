@@ -291,6 +291,7 @@ function showSheet(title, content) {
   header.append(el('strong', '', title), close);
   const body = el('div', 'sheet-content');
   body.append(content);
+  sheet.classList.remove('settings-sheet');
   sheet.replaceChildren(header, body);
   sheet.hidden = false;
   $('shell').classList.add('sheet-open');
@@ -561,7 +562,36 @@ function editSpace(existing) {
 async function settings() {
   try { displays = (await api.load()).displays; } catch (error) { errorMessage(error); }
   const form = el('form');
+  form.className = 'settings-form';
   const controls = {};
+  const navigation = el('nav', 'settings-nav');
+  navigation.setAttribute('aria-label', 'اقسام الاعدادات');
+  const sections = {};
+  const tabs = {};
+  function selectSection(key) {
+    for (const [id, panel] of Object.entries(sections)) {
+      panel.hidden = id !== key;
+      tabs[id].setAttribute('aria-pressed', String(id === key));
+    }
+    form.closest('.sheet-content')?.scrollTo?.({ top: 0 });
+  }
+  for (const [key, title, glyph] of [
+    ['look', 'المظهر', 'paint-brush'],
+    ['display', 'الشاشات', 'monitor'],
+    ['controls', 'التحكم', 'keyboard'],
+    ['system', 'النظام', 'gear']
+  ]) {
+    sections[key] = el('section', 'settings-card');
+    sections[key].dataset.section = key;
+    tabs[key] = button(title, () => selectSection(key), 'settings-tab', glyph);
+    navigation.append(tabs[key]);
+  }
+  form.append(navigation, ...Object.values(sections));
+  selectSection('look');
+  form.addEventListener('invalid', event => {
+    const key = event.target.closest('[data-section]')?.dataset.section;
+    if (key) selectSection(key);
+  }, true);
   const fields = [
     ['width', 'عرض الشريط', input('range', state.prefs.width, { min: 275, max: 460 })],
     ['iconSize', 'حجم الايقونات', input('range', state.prefs.iconSize, { min: 16, max: 30 })],
@@ -573,11 +603,24 @@ async function settings() {
     ['toggleKey', 'اختصار اظهار الشريط', input('text', state.prefs.toggleKey, { dir: 'ltr', required: true })],
     ['searchKey', 'اختصار البحث', input('text', state.prefs.searchKey, { dir: 'ltr', required: true })]
   ];
-  for (const [key, label, node] of fields) { controls[key] = node; form.append(field(label, node)); }
-  for (const [key, label] of [['blur', 'تمويه الخلفية'], ['compactLabels', 'اظهار عناوين الاقسام بالمصغر'], ['hideFullscreen', 'اخفاء وقت ملء الشاشة'], ['hour12', 'الساعة بنظام 12 ساعة']]) {
+  for (const [key, label, node] of fields) {
+    controls[key] = node;
+    const section = ['weekStart', 'toggleKey', 'searchKey'].includes(key) ? sections.controls : sections.look;
+    const wrapper = field(label, node);
+    if (node.type === 'range') {
+      const value = el('output', 'setting-value');
+      const refresh = () => { value.textContent = key === 'opacity' ? `${node.value}٪` : `${node.value} px`; };
+      node.addEventListener('input', refresh);
+      refresh();
+      wrapper.firstChild.append(value);
+    }
+    section.append(wrapper);
+  }
+  for (const [key, label] of [['blur', 'كثافة الزجاج الافتراضية'], ['compactLabels', 'اظهار عناوين الاقسام بالمصغر'], ['hideFullscreen', 'اخفاء وقت ملء الشاشة'], ['hour12', 'الساعة بنظام 12 ساعة']]) {
     const control = checkbox(label, state.prefs[key]);
     controls[key] = control.item;
-    form.append(control.label);
+    const section = key === 'hour12' ? sections.controls : key === 'hideFullscreen' ? sections.display : sections.look;
+    section.append(control.label);
   }
   const monitorControls = displays.map(display => {
     const settings = state.displays[display.id] || display.config;
@@ -586,7 +629,7 @@ async function settings() {
     const side = choice([['right', 'يمين'], ['left', 'يسار']], settings.side);
     const compactMode = checkbox('الوضع المصغر', settings.compact);
     block.append(el('legend', '', display.name), field('الظهور', mode), field('جهة الشريط', side), compactMode.label);
-    form.append(block);
+    sections.display.append(block);
     return { id: display.id, mode, side, compact: compactMode.item };
   });
   const actions = ['export', 'import'].map((action, index) => button(index ? 'استيراد الاعدادات' : 'تصدير الاعدادات', async () => {
@@ -603,7 +646,10 @@ async function settings() {
   const updateLine = el('small', '', updateStatus || `Rawaa ${version}`);
   updateLine.id = 'update-status';
   updateLine.setAttribute('role', 'status');
-  form.append(formActions('حفظ الاعدادات', actions), updateLine);
+  const systemActions = el('div', 'actions');
+  systemActions.append(...actions.slice(2), ...actions.slice(0, 2));
+  sections.system.append(el('strong', '', `رواء ${version}`), updateLine, systemActions);
+  form.append(formActions('حفظ الاعدادات'));
   form.addEventListener('submit', async event => {
     event.preventDefault();
     ignoreSettings = true;
@@ -621,6 +667,7 @@ async function settings() {
     if (success) { compact = config().compact; draw(); closeSheet(); }
   });
   showSheet('الاعدادات', form);
+  $('sheet').classList.add('settings-sheet');
 }
 
 function clock() {

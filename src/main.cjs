@@ -293,7 +293,8 @@ async function offerUpdate(entry) {
       status('جاري تنزيل التحديث');
       await autoUpdater.downloadUpdate();
     }
-    autoUpdater.quitAndInstall(false, true);
+    await saveQueue.catch(() => {});
+    autoUpdater.quitAndInstall(true, true);
     return 'جاري تثبيت التحديث';
   } catch (error) {
     console.error('Rawaa updater:', error.message);

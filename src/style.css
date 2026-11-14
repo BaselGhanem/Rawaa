@@ -179,3 +179,46 @@ body.no-blur .shell { background-color: rgba(24, 27, 29, calc(.37 + var(--alpha)
 @keyframes launch-icon { 35% { transform: scale(.86); } 68% { transform: translateY(-4px) scale(1.1); } }
 @keyframes loading-apps { to { opacity: .46; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+
+html { -webkit-user-select: none; user-select: none; }
+input:is([type=text], [type=url], [type=search], [type=number]), textarea, [contenteditable=true] {
+  -webkit-user-select: text; user-select: text;
+}
+.shell {
+  --accent: #79d6cb;
+  --tint: 126, 91, 73;
+  background: linear-gradient(155deg, #9babb41b, transparent 56%), rgba(18, 22, 25, calc(.58 + var(--alpha) * .36));
+  background-image: radial-gradient(ellipse at 12% 100%, rgba(var(--tint), .16), transparent 52%),
+    linear-gradient(155deg, #9babb41b, transparent 56%);
+}
+body.teal .shell { --accent: #8de3d8; --tint: 9, 153, 153; }
+.fold { background: #303a3e; color: #d5e7e5; }
+.row:hover, .row:focus-visible { background: #cce9ec16; }
+.section { color: #c1cbd0; }
+.sheet { background: linear-gradient(145deg, #2a3338, #1d2327 70%); }
+.sheet-head { font-size: 18px; min-height: 46px; flex-shrink: 0; }
+.sheet-head button { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; }
+.settings-sheet { padding: 16px 14px 12px; }
+.settings-sheet .sheet-content { padding-top: 4px; }
+.settings-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 4px; background: #11171b82; border-radius: 15px; }
+.settings-tab { display: grid; justify-items: center; align-content: center; gap: 6px; padding: 8px 2px; border-radius: 11px; font-size: 11px; color: #c0cbd0; }
+.settings-tab i { font-size: 17px; }
+.settings-tab[aria-pressed=true] { background: #324447; color: #a1e9de; }
+.settings-tab:hover { background: #ffffff16; }
+.settings-card { display: grid; gap: 12px; padding: 12px; border-radius: 15px; background: #ffffff0b; }
+.settings-card fieldset { background: #10171960; margin: 0; padding: 9px; }
+.settings-card .field > span { display: flex; justify-content: space-between; gap: 5px; }
+.setting-value { color: #a8c7c8; direction: ltr; white-space: nowrap; }
+.settings-card .check { flex-direction: row-reverse; justify-content: space-between; min-height: 25px; }
+.settings-card .check input {
+  appearance: none; flex: 0 0 31px; width: 31px; height: 17px; margin: 0;
+  border-radius: 20px; background: #49565b; cursor: pointer;
+}
+.settings-card .check input::before {
+  content: ''; display: block; width: 13px; height: 13px; border-radius: 50%; background: #fff;
+  margin: 2px; transform: translateX(0); transition: transform 160ms ease;
+}
+.settings-card .check input:checked { background: #158981; }
+.settings-card .check input:checked::before { transform: translateX(-14px); }
+.settings-form > .actions { position: sticky; bottom: 0; padding-top: 5px; background: #1d2327; }
+.settings-form > .actions > .primary { width: 100%; }
