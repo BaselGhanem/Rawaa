@@ -94,7 +94,7 @@ function makeWindow(display, settings, isPalette = false) {
   const win = new BrowserWindow({
     ...(isPalette ? paletteBounds(display) : boundsFor(display, settings)), show: false, frame: false, transparent: true,
     backgroundColor: '#00000000', hasShadow: false, resizable: false, movable: false,
-    minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true,
+    minimizable: false, maximizable: false, fullscreenable: false,
     alwaysOnTop: !isPalette || state.prefs.searchAlwaysOnTop, title: 'رواء',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
