@@ -596,7 +596,10 @@ async function settings() {
   actions.push(button('التحديثات', async () => {
     try { toast(await api.updates()); } catch (error) { errorMessage(error); }
   }), button('اخفاء الشريط', () => { closeSheet(); api.hide(); }));
-  form.append(formActions('حفظ الاعدادات', actions), el('small', '', `Rawaa ${version}${updateStatus ? ` • ${updateStatus}` : ''}`));
+  const updateLine = el('small', '', updateStatus || `Rawaa ${version}`);
+  updateLine.id = 'update-status';
+  updateLine.setAttribute('role', 'status');
+  form.append(formActions('حفظ الاعدادات', actions), updateLine);
   form.addEventListener('submit', async event => {
     event.preventDefault();
     ignoreSettings = true;
@@ -733,6 +736,7 @@ api.load().then(data => {
   api.on('search-focus', searchFocus);
   api.on('update-status', message => {
     updateStatus = message;
+    if ($('update-status')) $('update-status').textContent = message;
     if (message === 'التحديث جاهز للتثبيت') toast(message);
   });
 }).catch(errorMessage);

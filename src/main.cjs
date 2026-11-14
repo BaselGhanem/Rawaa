@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, dialog, globalShortcut, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, dialog, globalShortcut, nativeImage, Notification } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -23,6 +23,11 @@ let foreground;
 let quitting = false;
 let updateStatus = '';
 let updatesReady = false;
+let updateInfo;
+let checkingUpdate;
+let updatePromptOpen = false;
+let updateNotification;
+let notifiedVersion;
 let saveQueue = Promise.resolve();
 
 function configPath() {
@@ -267,16 +272,71 @@ function status(message) {
   for (const { win } of windows.values()) win.webContents.send('update-status', message);
 }
 
+function checkUpdates() {
+  if (!checkingUpdate) {
+    checkingUpdate = autoUpdater.checkForUpdates().finally(() => { checkingUpdate = undefined; });
+  }
+  return checkingUpdate;
+}
+
+async function offerUpdate(entry) {
+  if (updatePromptOpen) return '';
+  updatePromptOpen = true;
+  try {
+    if (!updatesReady && !updateInfo) await checkUpdates();
+    if (!updateInfo) return updateStatus;
+    const ready = updatesReady;
+    const options = {
+      type: 'info',
+      title: 'تحديث رواء',
+      message: ready ? 'التحديث جاهز للتثبيت' : `تحديث رواء ${updateInfo.version} متاح`,
+      detail: ready ? 'رح يتم اغلاق رواء وفتحه بعد التثبيت مع الاحتفاظ باعداداتك' : 'بتقدر تنزل التحديث هلا وتثبت من داخل رواء',
+      buttons: [ready ? 'تثبيت واعادة التشغيل' : 'تنزيل التحديث', 'لاحقا'],
+      defaultId: 0, cancelId: 1
+    };
+    const { response } = entry?.win.isVisible()
+      ? await dialog.showMessageBox(entry.win, options)
+      : await dialog.showMessageBox(options);
+    if (response !== 0) return '';
+    if (!ready) {
+      status('جاري تنزيل التحديث');
+      await autoUpdater.downloadUpdate();
+    }
+    autoUpdater.quitAndInstall(false, true);
+    return 'جاري تثبيت التحديث';
+  } catch (error) {
+    console.error('Rawaa updater:', error.message);
+    return updateStatus;
+  } finally {
+    updatePromptOpen = false;
+  }
+}
+
 function setupUpdates() {
   if (!windowsOS || !app.isPackaged) return;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.on('checking-for-update', () => status('جاري البحث عن تحديث'));
-  autoUpdater.on('update-available', () => status('جاري تنزيل التحديث'));
-  autoUpdater.on('update-not-available', () => status('رواء على اخر اصدار'));
+  autoUpdater.on('update-available', info => {
+    updateInfo = info;
+    status(`تحديث رواء ${info.version} متاح`);
+    if (updatePromptOpen || notifiedVersion === info.version || !Notification.isSupported()) return;
+    notifiedVersion = info.version;
+    updateNotification = new Notification({ title: `رواء • تحديث ${info.version}`, body: 'اضغط لتنزيل التحديث وتثبيته من داخل رواء' });
+    updateNotification.on('click', () => offerUpdate([...windows.values()].find(entry => entry.win.isVisible())));
+    updateNotification.show();
+  });
+  autoUpdater.on('update-not-available', () => {
+    updateInfo = undefined;
+    status(`رواء على اخر اصدار • ${app.getVersion()}`);
+  });
+  autoUpdater.on('download-progress', progress => status(`جاري تنزيل التحديث ${Math.floor(progress.percent)}٪`));
   autoUpdater.on('update-downloaded', () => { updatesReady = true; status('التحديث جاهز للتثبيت'); });
-  autoUpdater.on('error', () => status('تعذر التحقق من التحديث'));
-  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  autoUpdater.on('error', error => {
+    console.error('Rawaa updater:', error.message);
+    status(error.statusCode === 404 ? 'بيانات التحديث غير متاحة حاليا' : 'تعذر اكمال التحديث، جرب مرة ثانية');
+  });
+  const check = () => { if (!updatePromptOpen && !updatesReady) checkUpdates().catch(() => {}); };
   setTimeout(check, 3000).unref();
   setInterval(check, 4 * 60 * 60 * 1000).unref();
 }
@@ -362,12 +422,9 @@ function registerHandlers() {
     await saveConfiguration(next);
     return true;
   });
-  handle('updates', async () => {
-    if (!windowsOS || !app.isPackaged) return 'التحديث متاح من نسخة ويندوز المثبتة';
-    if (updatesReady) { autoUpdater.quitAndInstall(); return 'جاري تثبيت التحديث'; }
-    await autoUpdater.checkForUpdates().catch(() => {});
-    return updateStatus;
-  });
+  handle('updates', entry => windowsOS && app.isPackaged
+    ? offerUpdate(entry)
+    : 'التحديث متاح من نسخة ويندوز المثبتة');
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
