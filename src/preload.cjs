@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('rawaa', {
   launch: id => ipcRenderer.invoke('launch', id),
   icon: id => ipcRenderer.invoke('icon', id),
   geometry: value => ipcRenderer.invoke('geometry', value),
+  showSearch: () => ipcRenderer.invoke('show-search'),
   hide: () => ipcRenderer.invoke('hide'),
   backup: action => ipcRenderer.invoke('backup', action),
   updates: () => ipcRenderer.invoke('updates'),

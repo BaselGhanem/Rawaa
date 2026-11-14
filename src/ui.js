@@ -490,7 +490,8 @@ async function addMenu() {
     row('مجموعة جديدة', 'stack', () => editGroup()),
     row('زر يفتح عدة عناصر', 'rocket-launch', () => editor(null, '', 'bundle'))
   );
-  box.append(el('div', 'section', 'التطبيقات المفتوحة'), search, listing, actions);
+  const refresh = button('تحديث القائمة', loadApps, 'secondary', 'arrows-clockwise');
+  box.append(el('div', 'section', 'التطبيقات المفتوحة'), search, refresh, listing, actions);
   showSheet('اضافة اختصار', box);
   let apps = [];
   function render() {
@@ -525,16 +526,22 @@ async function addMenu() {
       listing.append(line);
     }
   }
-  listing.append(el('p', 'empty loading-apps', 'جاري قراءة التطبيقات المفتوحة'));
-  search.disabled = true;
-  try {
-    apps = await api.openApps();
-    search.disabled = false;
-    search.addEventListener('input', render);
-    render();
-  } catch {
-    listing.replaceChildren(el('p', 'empty', 'تعذر قراءة التطبيقات المفتوحة'), button('اعادة المحاولة', addMenu));
+  async function loadApps() {
+    refresh.disabled = true;
+    search.disabled = true;
+    listing.replaceChildren(el(`p`, `empty loading-apps`, `جاري قراءة التطبيقات المفتوحة`));
+    try {
+      apps = await api.openApps();
+      render();
+      search.disabled = false;
+    } catch {
+      listing.replaceChildren(el(`p`, `empty`, `تعذر قراءة التطبيقات المفتوحة`));
+    } finally {
+      refresh.disabled = false;
+    }
   }
+  search.addEventListener(`input`, render);
+  await loadApps();
 }
 
 function editGroup(existing) {
@@ -690,6 +697,7 @@ async function settings() {
   form.append(formActions('حفظ الاعدادات'));
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    const showPalette = state.prefs.searchView !== `palette` && controls.searchView.value === `palette`;
     ignoreSettings = true;
     const success = await change(next => {
       for (const [key, node] of Object.entries(controls)) {
@@ -702,7 +710,12 @@ async function settings() {
       }
     });
     ignoreSettings = false;
-    if (success) { compact = !isPalette && config().compact; draw(); closeSheet(); }
+    if (success) {
+      compact = !isPalette && config().compact;
+      draw();
+      closeSheet();
+      if (showPalette) api.showSearch().catch(errorMessage);
+    }
   });
   showSheet('الاعدادات', form);
   $('sheet').classList.add('settings-sheet');
@@ -799,7 +812,10 @@ function wire() {
   $('date').addEventListener('click', () => calendar());
   $('add').addEventListener('click', addMenu);
   $('settings').addEventListener('click', settings);
-  $('search-icon').addEventListener('click', searchFocus);
+  $(`search-icon`).addEventListener(`click`, () => {
+    if (!isPalette && state.prefs.searchView === `palette`) api.showSearch().catch(errorMessage);
+    else searchFocus();
+  });
   $(`search`).addEventListener(`input`, () => {
     paletteIndex = 0;
     drawEntries();

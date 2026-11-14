@@ -269,9 +269,10 @@ async function openItem(item, layout) {
     await shell.openExternal(url.href);
     return '';
   }
-  if (!path.isAbsolute(item.target)) throw new Error('اختر مسارا كاملا للعنصر');
-  await fsp.access(item.target).catch(() => { throw new Error(`تعذر الوصول الى ${item.name}`); });
-  const target = windowsOS && item.kind === 'app' ? await executable(item).catch(() => '') : '';
+  const packaged = windowsOS && item.kind === 'app' && /^appx:[a-z0-9._-]+![a-z0-9._-]+$/i.test(item.target);
+  if (!packaged && !path.isAbsolute(item.target)) throw new Error('اختر مسارا كاملا للعنصر');
+  if (!packaged) await fsp.access(item.target).catch(() => { throw new Error(`تعذر الوصول الى ${item.name}`); });
+  const target = packaged ? item.target : windowsOS && item.kind === 'app' ? await executable(item).catch(() => '') : '';
   let running = false;
   if (target) {
     try {
@@ -281,7 +282,12 @@ async function openItem(item, layout) {
       if (error.code === 3) running = true;
     }
   }
-  if (!running) {
+  if (!running && packaged) {
+    const explorer = path.join(process.env.SystemRoot || 'C:\\Windows', 'explorer.exe');
+    // Explorer can return exit code 1 after handing the launch to the shell.
+    await exec(explorer, [`shell:AppsFolder\\${item.target.slice(5)}`], { windowsHide: true, timeout: 10000 })
+      .catch(error => { if (error.code !== 1) throw error; });
+  } else if (!running) {
     const error = await shell.openPath(item.target);
     if (error) throw new Error(error);
   }
@@ -432,6 +438,7 @@ function registerHandlers() {
     if (firstShape && entry.isPalette) revealPalette(entry);
     else if (firstShape) tick();
   });
+  handle('show-search', () => showLauncher(true));
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {
     const result = await dialog.showOpenDialog(entry.win, { properties: kind === 'folder' ? ['openDirectory'] : ['openFile', 'multiSelections'] });
@@ -443,11 +450,14 @@ function registerHandlers() {
     const { stdout } = await native('list', ['-OwnerPid', String(process.pid)]);
     const entries = stdout.trim() ? JSON.parse(stdout) : [];
     return Promise.all(entries.map(async entry => ({
-      kind: 'app', name: entry.name, target: entry.target, image: await fileIcon(entry.target)
+      kind: 'app', name: entry.name, target: entry.target, image: await fileIcon(entry.iconPath || entry.target)
     })));
   });
   handle('icon', (_entry, id) => {
     const item = state.items.find(value => value.id === id);
+    if (/^appx:Microsoft\.WindowsCalculator_/i.test(item?.target || '')) {
+      return fileIcon(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'calc.exe'));
+    }
     return item && ['app', 'file', 'folder'].includes(item.kind) ? fileIcon(item.target) : '';
   });
   handle('launch', async (_entry, id) => {

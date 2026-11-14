@@ -30,21 +30,51 @@ public static class Native {
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder b, int max);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder text, int max);
     [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out int value, int size);
-    public static string[] OpenApps(uint owner) {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr h, Callback fn, IntPtr data);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, ExactSpelling=true)] static extern int GetApplicationUserModelId(IntPtr process, ref uint length, StringBuilder id);
+    static string AppId(IntPtr hwnd) {
+        uint pid; GetWindowThreadProcessId(hwnd, out pid);
+        IntPtr process = OpenProcess(0x1000, false, pid);
+        if (process == IntPtr.Zero) return "";
+        try {
+            uint length = 0;
+            if (GetApplicationUserModelId(process, ref length, null) != 122 || length == 0) return "";
+            var id = new StringBuilder((int)length);
+            return GetApplicationUserModelId(process, ref length, id) == 0 ? id.ToString() : "";
+        } finally { CloseHandle(process); }
+    }
+    static string WindowAppId(IntPtr hwnd, string image) {
+        if (!String.Equals(System.IO.Path.GetFileName(image), "ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase))
+            return AppId(hwnd);
+        uint host; GetWindowThreadProcessId(hwnd, out host);
+        string id = "";
+        EnumChildWindows(hwnd, delegate(IntPtr child, IntPtr ignored) {
+            uint pid; GetWindowThreadProcessId(child, out pid);
+            if (pid == host) return true;
+            id = AppId(child);
+            return id.Length == 0;
+        }, IntPtr.Zero);
+        return id;
+    }
+    public static string[][] OpenApps(uint owner) {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var apps = new List<string[]>();
         EnumWindows(delegate(IntPtr hwnd, IntPtr ignored) {
             if (!IsWindowVisible(hwnd) || GetWindow(hwnd,4) != IntPtr.Zero) return true;
             uint pid; GetWindowThreadProcessId(hwnd, out pid);
             if (pid == owner) return true;
             int cloaked;
             if (DwmGetWindowAttribute(hwnd,14,out cloaked,4) == 0 && cloaked != 0) return true;
-            var title = new StringBuilder(2);
+            var title = new StringBuilder(512);
             if (GetWindowText(hwnd,title,title.Capacity) == 0) return true;
             string image = Image(hwnd);
-            if (image.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) paths.Add(image);
+            string id = WindowAppId(hwnd, image);
+            string target = id.Length > 0 ? "appx:" + id : image;
+            if ((id.Length > 0 || image.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) && seen.Add(target))
+                apps.Add(new string[] { target, image, title.ToString() });
             return true;
         }, IntPtr.Zero);
-        return new List<string>(paths).ToArray();
+        return apps.ToArray();
     }
     [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint id);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder text, ref int size);
@@ -60,9 +90,10 @@ public static class Native {
     }
     public static IntPtr Find(string target) {
         IntPtr result = IntPtr.Zero;
+        bool packaged = target.StartsWith("appx:", StringComparison.OrdinalIgnoreCase);
         EnumWindows(delegate(IntPtr hwnd, IntPtr ignored) {
             if (IsWindowVisible(hwnd) && GetWindow(hwnd,4)==IntPtr.Zero &&
-                String.Equals(Image(hwnd), target, StringComparison.OrdinalIgnoreCase)) {
+                String.Equals(packaged ? "appx:" + WindowAppId(hwnd, Image(hwnd)) : Image(hwnd), target, StringComparison.OrdinalIgnoreCase)) {
                 result=hwnd; return false;
             }
             return true;
@@ -72,14 +103,25 @@ public static class Native {
 }
 '@
 if ($Action -eq 'list') {
-    $apps = @(foreach ($exe in [Native]::OpenApps($OwnerPid)) {
+    $startNames = @{}
+    try {
+        foreach ($app in Get-StartApps) { $startNames[$app.AppID] = $app.Name }
+    } catch {}
+    $apps = @(foreach ($entry in [Native]::OpenApps($OwnerPid)) {
+        $target, $exe, $title = $entry
         $name = [IO.Path]::GetFileNameWithoutExtension($exe)
-        if ($name -in @('ApplicationFrameHost', 'SystemSettings', 'TextInputHost', 'SearchHost', 'ShellExperienceHost', 'StartMenuExperienceHost')) { continue }
-        try {
-            $description = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileDescription
-            if (![string]::IsNullOrWhiteSpace($description)) { $name = $description.Trim() }
-        } catch {}
-        [PSCustomObject]@{ name = $name; target = $exe }
+        if (!$target.StartsWith('appx:') -and $name -in @('ApplicationFrameHost', 'SystemSettings', 'TextInputHost', 'SearchHost', 'ShellExperienceHost', 'StartMenuExperienceHost')) { continue }
+        if ($target.StartsWith('appx:')) {
+            $id = $target.Substring(5)
+            $name = if ($startNames.ContainsKey($id)) { $startNames[$id] } else { $title }
+            if ($id -like 'Microsoft.WindowsCalculator_*!*') { $exe = Join-Path $env:SystemRoot 'System32\calc.exe' }
+        } else {
+            try {
+                $description = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileDescription
+                if (![string]::IsNullOrWhiteSpace($description)) { $name = $description.Trim() }
+            } catch {}
+        }
+        [PSCustomObject]@{ name = $name; target = $target; iconPath = $exe }
     })
     ConvertTo-Json -InputObject @($apps | Sort-Object name | Select-Object -First 60) -Compress
     exit
