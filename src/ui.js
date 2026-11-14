@@ -5,6 +5,8 @@ const $ = id => document.getElementById(id);
 const kinds = { app: 'تطبيق او اختصار', file: 'ملف', folder: 'مجلد', url: 'رابط', bundle: 'زر تشغيل مجموعة' };
 const kindIcons = { app: 'app-window', file: 'file', folder: 'folder', url: 'link', bundle: 'rocket-launch' };
 const iconOptions = ['app-window', 'file', 'folder', 'link', 'rocket-launch', 'chart-bar', 'table', 'game-controller', 'globe', 'book-open', 'briefcase', 'graduation-cap', 'star', 'image', 'music-note', 'envelope', 'code', 'video-camera'];
+const isPalette = new URLSearchParams(location.search).get(`view`) === `palette`;
+document.body.classList.toggle(`palette`, isPalette);
 const displayId = new URLSearchParams(location.search).get('display');
 const uid = () => crypto.randomUUID();
 const selectSpace = () => state.spaces.filter(space => space.id === state.active)[0];
@@ -12,6 +14,7 @@ const visibleItems = () => state.items.filter(item => item.shared || item.space 
 let state;
 let displays;
 let compact;
+let paletteIndex = 0;
 
 let dragged;
 let toastTimeout;
@@ -152,7 +155,7 @@ function draw() {
 }
 
 function nativeIcon(item, node) {
-  if ((state.prefs.icons !== 'native' && item.kind !== 'app') || item.icon || !['app', 'file', 'folder'].includes(item.kind)) return;
+  if ((!isPalette && state.prefs.icons !== 'native' && item.kind !== 'app') || item.icon || !['app', 'file', 'folder'].includes(item.kind)) return;
   const key = `${item.id}|${item.target}`;
   if (!nativeIcons.has(key)) {
     if (nativeIcons.size > 250) nativeIcons.clear();
@@ -171,7 +174,11 @@ async function run(item, node) {
   if (node?.classList.contains('launching')) return;
   node?.classList.add('launching');
   const started = performance.now();
-  try { toast(await api.launch(item.id)); }
+  try {
+    const result = await api.launch(item.id);
+    if (result) toast(result);
+    else if (isPalette && !state.prefs.searchAlwaysOnTop) await api.hide();
+  }
   catch (error) { errorMessage(error); }
   finally { setTimeout(() => node?.classList.remove('launching'), Math.max(0, 420 - (performance.now() - started))); }
 }
@@ -237,6 +244,15 @@ function drawEntries() {
   list.replaceChildren();
   const q = $('search').value.trim().toLocaleLowerCase();
   const items = visibleItems();
+  if (isPalette) {
+    const matches = items.filter(item => `${item.name} ${item.target}`.toLocaleLowerCase().includes(q));
+    matches.sort((a, b) => Number(!a.name.toLocaleLowerCase().startsWith(q)) - Number(!b.name.toLocaleLowerCase().startsWith(q)) ||
+      Number(b.pinned) - Number(a.pinned));
+    list.append(...matches.map(makeItem));
+    if (!matches.length) list.append(el(`p`, `empty`, q ? `ما في نتائج` : `ضيف اختصار حتى تفتحه من البحث`));
+    selectPaletteResult(paletteIndex);
+    return;
+  }
   if (q) {
     const matches = items.filter(item => `${item.name} ${item.target}`.toLocaleLowerCase().includes(q));
     list.append(...matches.map(makeItem));
@@ -277,6 +293,17 @@ function drawEntries() {
   entries.scrollTop = scroll;
 }
 
+function selectPaletteResult(index) {
+  const results = [...$(`entry-list`).querySelectorAll(`.shortcut-row`)];
+  paletteIndex = Math.max(0, Math.min(index, results.length - 1));
+  results.forEach((node, i) => {
+    node.classList.toggle(`selected`, i === paletteIndex);
+    if (i === paletteIndex) node.setAttribute(`aria-current`, `true`);
+    else node.removeAttribute(`aria-current`);
+  });
+  results[paletteIndex]?.scrollIntoView({ block: `nearest` });
+}
+
 function closeSheet() {
   const sheet = $('sheet');
   sheet.hidden = true;
@@ -315,7 +342,11 @@ function setCompact(value) {
 function searchFocus() {
   if (compact) { compact = false; styles(); }
   closeSheet();
-  $('search').focus();
+  $(`search`).focus();
+  if (isPalette) {
+    $(`search`).select();
+    animate($(`shell`), [{ opacity: .35 }, { opacity: 1 }]);
+  }
 }
 
 function itemMenu(item) {
@@ -598,6 +629,7 @@ async function settings() {
     if (key) selectSection(key);
   }, true);
   const fields = [
+    [`searchView`, `واجهة البحث`, choice([['sidebar', 'داخل الشريط'], ['palette', 'لوحة في وسط الشاشة']], state.prefs.searchView)],
     ['theme', 'الثيم', choice([['classic', 'رواء الكلاسيكي'], ['pebbly', 'مستوحى من Pebbly']], state.prefs.theme)],
     ['width', 'عرض الشريط', input('range', state.prefs.width, { min: 275, max: 460 })],
     ['iconSize', 'حجم الايقونات', input('range', state.prefs.iconSize, { min: 16, max: 30 })],
@@ -622,7 +654,7 @@ async function settings() {
     }
     section.append(wrapper);
   }
-  for (const [key, label] of [['blur', 'كثافة الزجاج الافتراضية'], ['compactLabels', 'اظهار عناوين الاقسام بالمصغر'], ['hideFullscreen', 'اخفاء وقت ملء الشاشة'], ['hour12', 'الساعة بنظام 12 ساعة']]) {
+  for (const [key, label] of [['searchAlwaysOnTop', 'لوحة البحث فوق النوافذ دائما'], ['blur', 'كثافة الزجاج الافتراضية'], ['compactLabels', 'اظهار عناوين الاقسام بالمصغر'], ['hideFullscreen', 'اخفاء وقت ملء الشاشة'], ['hour12', 'الساعة بنظام 12 ساعة']]) {
     const control = checkbox(label, state.prefs[key]);
     controls[key] = control.item;
     const section = key === 'hour12' ? sections.controls : key === 'hideFullscreen' ? sections.display : sections.look;
@@ -641,14 +673,14 @@ async function settings() {
   const actions = ['export', 'import'].map((action, index) => button(index ? 'استيراد الاعدادات' : 'تصدير الاعدادات', async () => {
     try {
       if (await api.backup(action)) {
-        if (action === 'import') { compact = config().compact; draw(); closeSheet(); }
+        if (action === 'import') { compact = !isPalette && config().compact; draw(); closeSheet(); }
         toast(index ? 'تم الاستيراد' : 'تم التصدير');
       }
     } catch (error) { errorMessage(error); }
   }));
   actions.push(button('التحديثات', async () => {
     try { toast(await api.updates()); } catch (error) { errorMessage(error); }
-  }), button('اخفاء الشريط', () => { closeSheet(); api.hide(); }));
+  }), button(isPalette ? 'اخفاء لوحة البحث' : 'اخفاء الشريط', () => { closeSheet(); api.hide(); }));
   const updateLine = el('small', '', updateStatus || `Rawaa ${version}`);
   updateLine.id = 'update-status';
   updateLine.setAttribute('role', 'status');
@@ -670,7 +702,7 @@ async function settings() {
       }
     });
     ignoreSettings = false;
-    if (success) { compact = config().compact; draw(); closeSheet(); }
+    if (success) { compact = !isPalette && config().compact; draw(); closeSheet(); }
   });
   showSheet('الاعدادات', form);
   $('sheet').classList.add('settings-sheet');
@@ -732,7 +764,7 @@ function reportGeometry() {
     const y = Math.max(0, Math.floor(top));
     return { x, y, width: Math.min(innerWidth, Math.ceil(right)) - x, height: Math.min(innerHeight, Math.ceil(bottom)) - y };
   });
-  api.geometry(boxes).catch(() => {});
+  api.geometry(boxes.filter(box => box.width > 0 && box.height > 0)).catch(() => {});
 }
 
 function wire() {
@@ -752,7 +784,15 @@ function wire() {
   }
   const observer = new ResizeObserver(reportGeometry);
   observer.observe($('shell'));
-  $('shell').addEventListener('transitionend', reportGeometry);
+  $(`shell`).addEventListener(`transitionend`, reportGeometry);
+  window.addEventListener(`resize`, reportGeometry);
+  if (isPalette) {
+    const exit = button('', () => api.hide(), `palette-close`, `x`);
+    exit.title = `اخفاء لوحة البحث`;
+    exit.setAttribute(`aria-label`, exit.title);
+    $(`search`).after(exit);
+    $(`search`).autofocus = true;
+  }
   $('fold').addEventListener('click', () => setCompact(!compact));
   $('spaces').addEventListener('click', spaces);
   $('space-name').addEventListener('click', spaces);
@@ -760,14 +800,24 @@ function wire() {
   $('add').addEventListener('click', addMenu);
   $('settings').addEventListener('click', settings);
   $('search-icon').addEventListener('click', searchFocus);
-  $('search').addEventListener('input', drawEntries);
+  $(`search`).addEventListener(`input`, () => {
+    paletteIndex = 0;
+    drawEntries();
+  });
   $('search').addEventListener('keydown', event => {
-    if (event.key === 'Enter') $('entries').querySelector('button')?.click();
+    if (isPalette && [`ArrowUp`, `ArrowDown`].includes(event.key)) {
+      event.preventDefault();
+      selectPaletteResult(paletteIndex + (event.key === `ArrowUp` ? -1 : 1));
+    }
+    if (event.key === `Enter`) {
+      event.preventDefault();
+      $(`entries`).querySelector(isPalette ? `.shortcut-row.selected` : `button`)?.click();
+    }
   });
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     if (!$('sheet').hidden) closeSheet();
-    else if ($('search').value) { $('search').value = ''; drawEntries(); }
+    else if (!isPalette && $('search').value) { $('search').value = ''; drawEntries(); }
     else api.hide();
   });
   document.addEventListener('pointerover', event => {
@@ -805,14 +855,14 @@ function wire() {
 
 api.load().then(data => {
   ({ state, displays, version, updateStatus } = data);
-  compact = config().compact;
+  compact = !isPalette && config().compact;
   wire();
   draw();
   setInterval(clock, 1000);
   api.on('state', next => {
     const before = config().compact;
     state = next;
-    if (!ignoreSettings && before !== config().compact) compact = config().compact;
+    if (!isPalette && !ignoreSettings && before !== config().compact) compact = config().compact;
     draw();
   });
   api.on('search-focus', searchFocus);

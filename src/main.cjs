@@ -17,6 +17,11 @@ const args = (action, extra = []) => ['-NoLogo', '-NoProfile', '-NonInteractive'
 const native = (action, extra) => exec(ps, args(action, extra), { windowsHide: true, timeout: 12000 });
 let state = defaults();
 let tray;
+let palette;
+
+function launcherEntries() {
+  return palette ? [...windows.values(), palette] : [...windows.values()];
+}
 let monitor;
 let interval;
 let foreground;
@@ -49,7 +54,7 @@ function saveConfiguration(next) {
     state = next;
     syncWindows();
     if (keysChanged) registerKeys();
-    for (const { win } of windows.values()) if (!win.isDestroyed()) win.webContents.send('state', state);
+    for (const { win } of launcherEntries()) if (!win.isDestroyed()) win.webContents.send('state', state);
     return state;
   });
   saveQueue = pending;
@@ -72,24 +77,62 @@ function boundsFor(display, settings) {
   };
 }
 
-function makeWindow(display, settings) {
+function paletteBounds(display) {
+  const area = display.workArea;
+  const width = Math.min(680, area.width);
+  const height = Math.min(560, area.height);
+  return {
+    x: area.x + Math.round((area.width - width) / 2),
+    y: area.y + Math.round((area.height - height) / 2), width, height
+  };
+}
+
+function makeWindow(display, settings, isPalette = false) {
   const win = new BrowserWindow({
-    ...boundsFor(display, settings), show: false, frame: false, transparent: true,
+    ...(isPalette ? paletteBounds(display) : boundsFor(display, settings)), show: false, frame: false, transparent: true,
     backgroundColor: '#00000000', hasShadow: false, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true,
-    alwaysOnTop: true, title: 'رواء',
+    alwaysOnTop: !isPalette || state.prefs.searchAlwaysOnTop, title: 'رواء',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
-  const entry = { win, ready: false, revealed: false, manual: false, fullscreen: false };
-  windows.set(display.id, entry);
+  const entry = { win, isPalette, ready: false, revealed: false, manual: false, fullscreen: false };
+  if (isPalette) palette = entry;
+  else windows.set(display.id, entry);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
-  win.once('ready-to-show', () => { entry.ready = true; tick(); });
-  win.on('closed', () => { if (windows.get(display.id) === entry) windows.delete(display.id); });
-  win.loadFile(path.join(__dirname, 'index.html'), { query: { display: String(display.id) } });
+  win.once('ready-to-show', () => {
+    entry.ready = true;
+    if (isPalette) revealPalette(entry);
+    else tick();
+  });
+  win.on('closed', () => {
+    if (palette === entry) palette = undefined;
+    if (windows.get(display.id) === entry) windows.delete(display.id);
+  });
+  win.loadFile(path.join(__dirname, 'index.html'), { query: { display: String(display.id), view: isPalette ? 'palette' : 'sidebar' } });
+  return entry;
+}
+
+function revealPalette(entry) {
+  if (!entry.manual || !entry.ready || (windowsOS && !entry.shape)) return;
+  entry.win.show();
+  entry.win.focus();
+  entry.win.webContents.send('search-focus');
+}
+
+function showPalette(display) {
+  const entry = palette || makeWindow(display, null, true);
+  entry.win.setBounds(paletteBounds(display));
+  entry.manual = true;
+  revealPalette(entry);
 }
 
 function syncWindows() {
+  if (palette) {
+    palette.win.setAlwaysOnTop(state.prefs.searchAlwaysOnTop);
+    if (state.prefs.searchView !== 'palette') hideLauncher(palette);
+    else if (palette.win.isVisible()) palette.win.setBounds(paletteBounds(screen.getDisplayMatching(palette.win.getBounds())));
+  }
   const displays = screen.getAllDisplays();
   for (const [id, entry] of windows) {
     if (!displays.some(display => display.id === id && displayConfig(display).mode !== 'off')) entry.win.destroy();
@@ -144,6 +187,7 @@ function tick() {
 
 function showLauncher(search = false) {
   const preferred = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  if (search && state.prefs.searchView === 'palette') return showPalette(preferred);
   const entry = windows.get(preferred.id) || [...windows.values()][0];
   if (!entry) return;
   if (!search && entry.win.isVisible() && entry.win.isFocused()) {
@@ -260,7 +304,7 @@ async function openItem(item, layout) {
 
 function status(message) {
   updateStatus = message;
-  for (const { win } of windows.values()) win.webContents.send('update-status', message);
+  for (const { win } of launcherEntries()) win.webContents.send('update-status', message);
 }
 
 function checkUpdates() {
@@ -315,7 +359,7 @@ function setupUpdates() {
     if (updatePromptOpen || notifiedVersion === info.version || !Notification.isSupported()) return;
     notifiedVersion = info.version;
     updateNotification = new Notification({ title: `رواء • تحديث ${info.version}`, body: 'اضغط لتنزيل التحديث وتثبيته من داخل رواء' });
-    updateNotification.on('click', () => offerUpdate([...windows.values()].find(entry => entry.win.isVisible())));
+    updateNotification.on('click', () => offerUpdate(launcherEntries().find(entry => entry.win.isFocused()) || launcherEntries().find(entry => entry.win.isVisible())));
     updateNotification.show();
   });
   autoUpdater.on('update-not-available', () => {
@@ -345,7 +389,7 @@ async function fileIcon(target) {
 
 function registerHandlers() {
   const handle = (channel, fn) => ipcMain.handle(channel, (event, value) => {
-    const entry = [...windows.values()].find(candidate => candidate.win.webContents === event.sender);
+    const entry = launcherEntries().find(candidate => candidate.win.webContents === event.sender);
     if (!entry || event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid sender');
     return fn(entry, value);
   });
@@ -370,7 +414,7 @@ function registerHandlers() {
     if (!value.every(valid)) return;
     const signature = JSON.stringify(value);
     if (entry.shape === signature) return;
-    const radii = [39, 14, 11, 11];
+    const radii = [entry.isPalette ? 24 : 39, 14, 11, 11];
     const regions = value.flatMap(({ x, y, width, height }, index) => {
       const radius = Math.min(radii[index], Math.floor(width / 2), Math.floor(height / 2));
       const parts = [];
@@ -385,7 +429,8 @@ function registerHandlers() {
     const firstShape = !entry.shape;
     entry.win.setShape(regions);
     entry.shape = signature;
-    if (firstShape) tick();
+    if (firstShape && entry.isPalette) revealPalette(entry);
+    else if (firstShape) tick();
   });
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {
@@ -464,7 +509,7 @@ else {
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'اظهار رواء', click: () => showLauncher() },
       { label: 'بحث سريع', click: () => showLauncher(true) },
-      { label: 'اخفاء الشريط', click: () => windows.forEach(hideLauncher) },
+      { label: 'اخفاء الشريط', click: () => launcherEntries().forEach(hideLauncher) },
       { type: 'separator' },
       { label: 'خروج', click: () => app.quit() }
     ]));
