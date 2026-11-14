@@ -10,6 +10,7 @@ const { defaults, normalize } = require('./store.cjs');
 const exec = promisify(execFile);
 const windows = new Map();
 const imageCache = new Map();
+const packagedIconPaths = new Map();
 const windowsOS = process.platform === 'win32';
 const nativeScript = path.join(app.isPackaged ? process.resourcesPath : __dirname, 'windows.ps1');
 const ps = windowsOS ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : '';
@@ -383,14 +384,60 @@ function setupUpdates() {
   setInterval(check, 4 * 60 * 60 * 1000).unref();
 }
 
+function transparentIcon(image) {
+  if (!image || image.isEmpty()) return '';
+  const { width, height } = image.getSize();
+  const pixels = image.toBitmap();
+  if (pixels.length !== width * height * 4) return '';
+  let left = width, right = -1, top = height, bottom = -1;
+  let transparent = false;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = pixels[(y * width + x) * 4 + 3];
+      if (alpha < 255) transparent = true;
+      if (alpha <= 8) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (!transparent || right < left) return '';
+  return image.crop({ x: left, y: top, width: right - left + 1, height: bottom - top + 1 }).toDataURL();
+}
+
+async function readFileIcon(target) {
+  const resolved = windowsOS && path.extname(target).toLowerCase() === '.lnk'
+    ? await executable({ target }).catch(() => '')
+    : '';
+  for (const source of new Set([resolved, target])) {
+    if (!source) continue;
+    for (const size of ['large', 'normal']) {
+      const image = await app.getFileIcon(source, { size }).catch(() => null);
+      const icon = transparentIcon(image);
+      if (icon) return icon;
+    }
+  }
+  return '';
+}
+
 async function fileIcon(target) {
   if (!path.isAbsolute(target)) return '';
   if (!imageCache.has(target)) {
-    if (imageCache.size > 250) imageCache.clear();
-    const image = await app.getFileIcon(target, { size: 'normal' }).catch(() => null);
-    if (image) imageCache.set(target, image.toDataURL());
+    if (imageCache.size >= 250) imageCache.delete(imageCache.keys().next().value);
+    imageCache.set(target, readFileIcon(target));
   }
-  return imageCache.get(target) || '';
+  const pending = imageCache.get(target);
+  const icon = await pending.catch(() => '');
+  if (!icon && imageCache.get(target) === pending) imageCache.delete(target);
+  return icon;
+}
+
+function itemIcon(item) {
+  if (/^appx:Microsoft\.WindowsCalculator_/i.test(item.target)) {
+    return fileIcon(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'calc.exe'));
+  }
+  return fileIcon(packagedIconPaths.get(item.target) || item.target);
 }
 
 function registerHandlers() {
@@ -449,16 +496,19 @@ function registerHandlers() {
     if (!windowsOS) return [];
     const { stdout } = await native('list', ['-OwnerPid', String(process.pid)]);
     const entries = stdout.trim() ? JSON.parse(stdout) : [];
+    for (const entry of entries) {
+      if (entry.target.startsWith('appx:') && entry.iconPath && !/ApplicationFrameHost\.exe$/i.test(entry.iconPath)) {
+        if (packagedIconPaths.size >= 250) packagedIconPaths.delete(packagedIconPaths.keys().next().value);
+        packagedIconPaths.set(entry.target, entry.iconPath);
+      }
+    }
     return Promise.all(entries.map(async entry => ({
-      kind: 'app', name: entry.name, target: entry.target, image: await fileIcon(entry.iconPath || entry.target)
+      kind: 'app', name: entry.name, target: entry.target, image: await itemIcon(entry)
     })));
   });
   handle('icon', (_entry, id) => {
     const item = state.items.find(value => value.id === id);
-    if (/^appx:Microsoft\.WindowsCalculator_/i.test(item?.target || '')) {
-      return fileIcon(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'calc.exe'));
-    }
-    return item && ['app', 'file', 'folder'].includes(item.kind) ? fileIcon(item.target) : '';
+    return item && ['app', 'file', 'folder'].includes(item.kind) ? itemIcon(item) : '';
   });
   handle('launch', async (_entry, id) => {
     const item = state.items.find(value => value.id === id);

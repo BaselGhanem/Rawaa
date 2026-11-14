@@ -161,7 +161,9 @@ function nativeIcon(item, node) {
     if (nativeIcons.size > 250) nativeIcons.clear();
     nativeIcons.set(key, api.icon(item.id).catch(() => ''));
   }
-  nativeIcons.get(key).then(source => {
+  const pending = nativeIcons.get(key);
+  pending.then(source => {
+    if (!source && nativeIcons.get(key) === pending) nativeIcons.delete(key);
     if (!source || !node.isConnected) return;
     const image = el('img', 'app-icon');
     image.src = source;
@@ -333,7 +335,7 @@ function setCompact(value) {
   closeSheet();
   $('search').value = '';
   draw();
-  if (state.prefs.theme === 'pebbly') {
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
     animate($('fold'), [{ rotate: '-18deg' }, { rotate: '8deg', offset: .7 }, { rotate: '0deg' }]);
   }
   change(next => { next.displays[displayId] = { ...config(), compact }; });
@@ -508,10 +510,16 @@ async function addMenu() {
           const { name, kind, target } = app;
           next.items.push({ id: uid(), name, kind, target, space: next.active });
         });
-        if (saved) { render(); toast('تمت اضافة التطبيق'); }
+        if (saved) {
+          render();
+          const added = [...listing.children].find(node => node.dataset.target === app.target);
+          if (added) animate(added, [{ opacity: .55, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }]);
+          toast('تمت اضافة التطبيق');
+        }
         else line.disabled = false;
       });
       line.classList.add('app-option');
+      line.dataset.target = app.target;
       const alreadyAdded = exists();
       line.disabled = alreadyAdded;
       const indicator = icon(alreadyAdded ? 'check' : 'plus');
@@ -782,6 +790,30 @@ function reportGeometry() {
 
 function wire() {
   const shell = $('shell');
+  let magnified = [];
+  function resetMagnification() {
+    for (const row of magnified) row.style.removeProperty('--dock-scale');
+    magnified = [];
+  }
+  shell.addEventListener(`pointerover`, event => {
+    if (event.pointerType === `touch` || matchMedia(`(prefers-reduced-motion: reduce)`).matches) return;
+    const selector = `.shortcut-row, .app-option`;
+    const row = event.target.closest(selector);
+    if (row && row.contains(event.relatedTarget)) return;
+    resetMagnification();
+    if (!row) return;
+    const list = row.closest(`.app-list, #entry-list`);
+    if (!list) return;
+    const rows = [...list.querySelectorAll(selector)];
+    const active = rows.indexOf(row);
+    magnified = rows.slice(Math.max(0, active - 2), active + 3);
+    for (const neighbor of magnified) {
+      const distance = Math.min(2, Math.abs(rows.indexOf(neighbor) - active));
+      neighbor.style.setProperty(`--dock-scale`, [1.44, 1.20, 1.08][distance]);
+    }
+  });
+  shell.addEventListener(`pointerleave`, resetMagnification);
+  shell.addEventListener(`dragstart`, resetMagnification);
   const sizeObserver = new ResizeObserver(() => {
     const height = [...shell.children].filter(node => node.id !== 'sheet').reduce((total, node) => {
       const style = getComputedStyle(node);
