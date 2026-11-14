@@ -131,6 +131,7 @@ function styles() {
   root.setProperty('--icon', `${prefs.iconSize}px`);
   root.setProperty('--gap', `${prefs.gap}px`);
   document.body.classList.toggle('compact', compact);
+  document.body.classList.toggle('pebbly', prefs.theme === 'pebbly');
   document.body.classList.toggle('left', config().side === 'left');
   document.body.classList.toggle('teal', prefs.tint === 'teal');
   document.body.classList.toggle('no-blur', !prefs.blur);
@@ -177,6 +178,7 @@ async function run(item, node) {
 
 function makeItem(item) {
   const node = row(item.name, iconOptions.includes(item.icon) ? item.icon : kindIcons[item.kind], () => run(item, node));
+  node.classList.add('shortcut-row');
   nativeIcon(item, node);
   node.draggable = true;
   node.addEventListener('dragstart', event => {
@@ -304,6 +306,9 @@ function setCompact(value) {
   closeSheet();
   $('search').value = '';
   draw();
+  if (state.prefs.theme === 'pebbly') {
+    animate($('fold'), [{ rotate: '-18deg' }, { rotate: '8deg', offset: .7 }, { rotate: '0deg' }]);
+  }
   change(next => { next.displays[displayId] = { ...config(), compact }; });
 }
 
@@ -593,6 +598,7 @@ async function settings() {
     if (key) selectSection(key);
   }, true);
   const fields = [
+    ['theme', 'الثيم', choice([['classic', 'رواء الكلاسيكي'], ['pebbly', 'مستوحى من Pebbly']], state.prefs.theme)],
     ['width', 'عرض الشريط', input('range', state.prefs.width, { min: 275, max: 460 })],
     ['iconSize', 'حجم الايقونات', input('range', state.prefs.iconSize, { min: 16, max: 30 })],
     ['gap', 'المسافة بين العناصر', input('range', state.prefs.gap, { min: 0, max: 13 })],
@@ -708,9 +714,15 @@ function calendar(month = new Date()) {
 }
 
 function animate(node, frames) {
-  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    node.animate(frames, { duration: 210, easing: 'cubic-bezier(.2,.75,.2,1)' });
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (state.prefs.theme === 'pebbly' && node.id === 'sheet') {
+    node.animate([
+      { opacity: .15, clipPath: 'inset(4% 25% 84% round 28px)' },
+      { opacity: 1, clipPath: 'inset(0 0 0 round 24px)' }
+    ], { duration: 330, easing: 'cubic-bezier(.18,.9,.28,1)' });
+    return;
   }
+  node.animate(frames, { duration: 210, easing: 'cubic-bezier(.2,.75,.2,1)' });
 }
 
 function reportGeometry() {

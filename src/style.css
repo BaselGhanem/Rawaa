@@ -222,3 +222,75 @@ body.teal .shell { --accent: #8de3d8; --tint: 9, 153, 153; }
 .settings-card .check input:checked::before { transform: translateX(-14px); }
 .settings-form > .actions { position: sticky; bottom: 0; padding-top: 5px; background: #1d2327; }
 .settings-form > .actions > .primary { width: 100%; }
+
+/* Optional capsules and motion inspired by Pebbly. */
+body.pebbly .shell {
+  --accent: #ffc479;
+  background: radial-gradient(ellipse at 90% 8%, #72523070, transparent 51%),
+    rgba(25, 23, 22, calc(.65 + var(--alpha) * .32));
+  transition: width 420ms cubic-bezier(.16,1,.28,1), height 380ms cubic-bezier(.16,1,.28,1),
+    padding 290ms ease;
+}
+body.pebbly.teal .shell {
+  --accent: #92e4db;
+  background: radial-gradient(ellipse at 90% 8%, #2a746b70, transparent 51%),
+    rgba(20, 25, 24, calc(.65 + var(--alpha) * .32));
+}
+body.pebbly .fold { background: #36312d; color: var(--accent); }
+body.pebbly .search-wrap { background: #ffffff0c; border-radius: 999px; }
+body.pebbly .shortcut-row {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ffffff09;
+}
+body.pebbly .shortcut-row:hover {
+  background: color-mix(in srgb, var(--accent) 13%, #ffffff09);
+}
+body.pebbly .shortcut-row.launching { animation: pebbly-press 420ms ease both; }
+body.pebbly .shortcut-row.launching::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, var(--accent), transparent 70%);
+  animation: pebbly-wave 420ms ease-out both;
+}
+body.pebbly .shortcut-row.launching > :is(i:first-child,img) {
+  animation: pebbly-icon 420ms ease both;
+}
+body.pebbly .group-items > .row { animation: pebbly-reveal 310ms cubic-bezier(.18,.9,.25,1.14) both; }
+body.pebbly .group-items > .row:nth-child(2) { animation-delay: 25ms; }
+body.pebbly .group-items > .row:nth-child(3) { animation-delay: 50ms; }
+body.pebbly .group-items > .row:nth-child(n+4) { animation-delay: 75ms; }
+body.pebbly .clock {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, #292725);
+}
+body.pebbly .clock:hover { background: color-mix(in srgb, var(--accent) 24%, #292725); }
+body.pebbly .clock > i:first-child { color: var(--accent); }
+body.pebbly .sheet { background: linear-gradient(148deg, #36302b, #22201e 68%); }
+body.pebbly.teal .sheet { background: linear-gradient(148deg, #263d38, #1a2221 68%); }
+body.pebbly .settings-tab[aria-pressed=true] {
+  background: color-mix(in srgb, var(--accent) 20%, #292725);
+  color: var(--accent);
+}
+body.pebbly .settings-form > .actions { background: #22201e; }
+body.pebbly.teal .settings-form > .actions { background: #1a2221; }
+@keyframes pebbly-press {
+  26% { transform: scale(.95); }
+  63% { transform: scale(1.015); }
+}
+@keyframes pebbly-wave {
+  from { opacity: .28; transform: scaleX(.22); }
+  to { opacity: 0; transform: scaleX(1.8); }
+}
+@keyframes pebbly-icon {
+  28% { transform: scale(.84); }
+  65% { transform: scale(1.15) translateY(-1px); }
+}
+@keyframes pebbly-reveal {
+  from { opacity: 0; transform: translateY(-6px) scale(.96); }
+  to { opacity: 1; transform: none; }
+}

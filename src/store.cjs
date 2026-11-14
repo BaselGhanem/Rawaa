@@ -8,6 +8,7 @@ const defaults = () => ({
   items: [],
   displays: {},
   prefs: {
+    theme: 'classic',
     width: 330, iconSize: 20, gap: 5, opacity: 38, blur: true, tint: 'warm',
     icons: 'line', compactLabels: false, hour12: false, weekStart: 6,
     toggleKey: 'CommandOrControl+Alt+Space', searchKey: 'CommandOrControl+Alt+K',
@@ -28,6 +29,7 @@ function normalize(input) {
   const p = input.prefs || {};
   state.prefs = {
     ...state.prefs,
+    theme: p.theme === 'pebbly' ? 'pebbly' : 'classic',
     width: number(p.width, 275, 460, 330),
     iconSize: number(p.iconSize, 16, 30, 20),
     gap: number(p.gap, 0, 13, 5),
