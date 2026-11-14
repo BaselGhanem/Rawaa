@@ -120,7 +120,7 @@ function tick() {
   const cursor = screen.getCursorScreenPoint();
   for (const display of screen.getAllDisplays()) {
     const entry = windows.get(display.id);
-    if (!entry?.ready) continue;
+    if (!entry?.ready || (windowsOS && !entry.shape)) continue;
     const settings = displayConfig(display);
     const bounds = entry.win.getBounds();
     const area = display.bounds;
@@ -137,15 +137,6 @@ function tick() {
     const show = (!fullscreen || entry.overrideFullscreen) && (entry.manual || (!entry.suppressed && (settings.mode === 'fixed' || entry.revealed)));
     if (show && !entry.win.isVisible()) entry.win.showInactive();
     if (!show && entry.win.isVisible()) entry.win.hide();
-    if (show && windowsOS) {
-      const hit = entry.hit;
-      const passthrough = !hit || cursor.x < bounds.x + hit.x || cursor.x >= bounds.x + hit.x + hit.width ||
-        cursor.y < bounds.y + hit.y || cursor.y >= bounds.y + hit.y + hit.height;
-      if (passthrough !== entry.passthrough) {
-        entry.win.setIgnoreMouseEvents(passthrough, { forward: true });
-        entry.passthrough = passthrough;
-      }
-    }
     if (nearEdge && !entry.wasNear && settings.mode === 'edge') entry.suppressed = false;
     entry.wasNear = nearEdge;
   }
@@ -371,8 +362,29 @@ function registerHandlers() {
     return { state: saved, warning: changed && !activeKeys ? 'تعذر تسجيل واحد من اختصارات الكيبورد' : '' };
   });
   handle('geometry', (entry, value) => {
-    const valid = rect => rect && ['x', 'y', 'width', 'height'].every(key => Number.isInteger(rect[key]) && rect[key] >= 0 && rect[key] <= 2000) && rect.width > 0 && rect.height > 0;
-    if (valid(value)) entry.hit = value;
+    if (!windowsOS || !Array.isArray(value) || value.length > 4 || !value.length) return;
+    const valid = rect => rect && ['x', 'y', 'width', 'height'].every(key =>
+      Number.isInteger(rect[key]) && rect[key] >= 0 && rect[key] <= 2000
+    ) && rect.width > 0 && rect.height > 0;
+    if (!value.every(valid)) return;
+    const signature = JSON.stringify(value);
+    if (entry.shape === signature) return;
+    const radii = [39, 14, 11, 11];
+    const regions = value.flatMap(({ x, y, width, height }, index) => {
+      const radius = Math.min(radii[index], Math.floor(width / 2), Math.floor(height / 2));
+      const parts = [];
+      for (let row = 0; row < radius; row++) {
+        const pad = Math.floor(radius - Math.sqrt(radius ** 2 - (radius - row - .5) ** 2));
+        parts.push({ x: x + pad, y: y + row, width: width - 2 * pad, height: 1 });
+        parts.push({ x: x + pad, y: y + height - row - 1, width: width - 2 * pad, height: 1 });
+      }
+      if (height > 2 * radius) parts.push({ x, y: y + radius, width, height: height - 2 * radius });
+      return parts;
+    });
+    const firstShape = !entry.shape;
+    entry.win.setShape(regions);
+    entry.shape = signature;
+    if (firstShape) tick();
   });
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {

@@ -95,7 +95,8 @@ function toast(message) {
   clearTimeout(toastTimeout);
   node.textContent = message;
   node.hidden = false;
-  toastTimeout = setTimeout(() => { node.hidden = true; }, 3500);
+  reportGeometry();
+  toastTimeout = setTimeout(() => { node.hidden = true; reportGeometry(); }, 3500);
 }
 
 function errorMessage(error) {
@@ -666,13 +667,13 @@ function animate(node, frames) {
 }
 
 function reportGeometry() {
-  const panel = $('shell').getBoundingClientRect();
-  const fold = $('fold').getBoundingClientRect();
-  const toRect = (left, top, right, bottom) => ({
-    x: Math.max(0, Math.round(left)), y: Math.max(0, Math.round(top)),
-    width: Math.round(right - left), height: Math.round(bottom - top)
+  const boxes = ['shell', 'fold', 'tip', 'toast'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
+    const { left, top, right, bottom } = $(id).getBoundingClientRect();
+    const x = Math.max(0, Math.floor(left));
+    const y = Math.max(0, Math.floor(top));
+    return { x, y, width: Math.min(innerWidth, Math.ceil(right)) - x, height: Math.min(innerHeight, Math.ceil(bottom)) - y };
   });
-  api.geometry(toRect(Math.min(panel.left, fold.left), panel.top, Math.max(panel.right, fold.right), panel.bottom)).catch(() => {});
+  api.geometry(boxes).catch(() => {});
 }
 
 function wire() {
@@ -717,15 +718,20 @@ function wire() {
     const rect = anchor.getBoundingClientRect();
     tip.textContent = anchor.dataset.tip;
     tip.hidden = false;
-    animate(tip, [{ opacity: 0, transform: 'translateY(3px)' }, { opacity: 1, transform: 'none' }]);
+
     const available = config().side === 'left' ? innerWidth - rect.right : rect.left;
     tip.style.maxWidth = `${Math.min(150, available - 10)}px`;
     tip.style.left = `${config().side === 'left' ? rect.right + 10 : rect.left - tip.offsetWidth - 10}px`;
     tip.style.top = `${rect.top + (rect.height - tip.offsetHeight) / 2}px`;
+    reportGeometry();
+    animate(tip, [{ opacity: 0 }, { opacity: 1 }]);
   });
   document.addEventListener('pointerout', event => {
     const anchor = event.target.closest('[data-tip]');
-    if (anchor && !anchor.contains(event.relatedTarget)) $('tip').hidden = true;
+    if (anchor && !anchor.contains(event.relatedTarget)) {
+      $('tip').hidden = true;
+      reportGeometry();
+    }
   });
   $('shell').addEventListener('dragover', event => {
     if (event.dataTransfer.types.includes('Files')) event.preventDefault();
