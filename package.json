@@ -1,6 +1,6 @@
 {
   "name": "rawaa",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Rawaa desktop launcher for Windows 11",
   "main": "src/main.cjs",
   "scripts": {
@@ -53,7 +53,7 @@
           ]
         }
       ],
-      "signAndEditExecutable": false
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,
