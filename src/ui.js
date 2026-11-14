@@ -18,6 +18,56 @@ let paletteIndex = 0;
 
 let dragged;
 let trayMotion;
+let edgeMotion;
+let edgeTimer;
+let edgeMode = `pin`;
+
+async function setEdgeMode(mode) {
+  if (isPalette || mode === edgeMode) return;
+  clearTimeout(edgeTimer);
+  edgeMotion?.cancel();
+  edgeMode = mode;
+  const shell = $(`shell`);
+  const handle = $(`edge-handle`);
+  const control = $(`tray-minimize`);
+  const left = config().side === `left`;
+  control.replaceChildren(icon(mode === `preview` ? `push-pin` : `minus`));
+  control.title = mode === `preview` ? `تثبيت فوق النوافذ` : `طي الشريط للحافة`;
+  control.setAttribute(`aria-label`, control.title);
+  const folded = mode === `fold`;
+  handle.hidden = !folded;
+  handle.setAttribute(`aria-expanded`, String(!folded));
+  shell.classList.remove(`edge-folded`);
+  shell.classList.toggle(`edge-preview`, mode === `preview`);
+  const tip = $(`tip`);
+  tip.hidden = true;
+  const updateWindow = api.edgePanel(mode);
+  if (matchMedia(`(prefers-reduced-motion: reduce)`).matches || mode === `pin`) {
+    shell.classList.toggle(`edge-folded`, folded);
+    if (mode === `pin`) animate(control, [
+      { scale: .84, rotate: `-12deg` }, { scale: 1.12, rotate: `5deg`, offset: .55 }, { scale: 1, rotate: `0deg` }
+    ]);
+  } else {
+    const full = { opacity: 1, translate: `0`, scale: 1, clipPath: `inset(0 round 30px)` };
+    const tucked = {
+      opacity: 0,
+      translate: `${left ? -30 : 30}px`,
+      scale: .94,
+      clipPath: left ? `inset(35% 95% 35% 0 round 20px)` : `inset(35% 0 35% 95% round 20px)`
+    };
+    const motion = shell.animate(folded ? [full, tucked] : [tucked, full], {
+      duration: folded ? 235 : 310, easing: `cubic-bezier(.22,.8,.2,1)`, fill: `forwards`
+    });
+    edgeMotion = motion;
+    motion.finished.then(() => {
+      shell.classList.toggle(`edge-folded`, folded);
+      motion.cancel();
+      reportGeometry();
+    }).catch(() => {});
+  }
+  try { await updateWindow; } catch (error) { errorMessage(error); }
+  reportGeometry();
+}
 let toastTimeout;
 let updateStatus;
 let version;
@@ -728,7 +778,7 @@ async function settings() {
   }));
   actions.push(button('التحديثات', async () => {
     try { toast(await api.updates()); } catch (error) { errorMessage(error); }
-  }), button(isPalette ? 'اخفاء لوحة البحث' : 'اخفاء الشريط', () => { closeSheet(); api.hide(); }));
+  }), button(isPalette ? 'اخفاء لوحة البحث' : 'اخفاء الشريط', () => { closeSheet(); if (isPalette) api.hide(); else setEdgeMode(`fold`); }));
   const updateLine = el('small', '', updateStatus || `Rawaa ${version}`);
   updateLine.id = 'update-status';
   updateLine.setAttribute('role', 'status');
@@ -846,7 +896,7 @@ function animate(node, frames) {
 }
 
 function reportGeometry() {
-  const boxes = ['shell', 'tip', 'toast'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
+  const boxes = ['shell', 'tip', 'toast', 'edge-handle'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
     const { left, top, right, bottom } = $(id).getBoundingClientRect();
     const x = Math.max(0, Math.floor(left));
     const y = Math.max(0, Math.floor(top));
@@ -908,7 +958,21 @@ function wire() {
     $(`search`).after(minimize, exit);
     $(`search`).autofocus = true;
   }
-  $(`tray-minimize`).addEventListener(`click`, () => api.minimizeToTray().catch(errorMessage));
+  const handle = $(`edge-handle`);
+  handle.addEventListener(`pointerenter`, () => {
+    edgeTimer = setTimeout(() => setEdgeMode(`preview`), 110);
+  });
+  handle.addEventListener(`pointerleave`, () => {
+    if (edgeMode === `fold`) clearTimeout(edgeTimer);
+  });
+  handle.addEventListener(`click`, () => setEdgeMode(`preview`));
+  shell.addEventListener(`pointerenter`, () => clearTimeout(edgeTimer));
+  shell.addEventListener(`pointerleave`, () => {
+    if (edgeMode === `preview` && $(`sheet`).hidden && !dragged) {
+      edgeTimer = setTimeout(() => setEdgeMode(`fold`), 420);
+    }
+  });
+  $(`tray-minimize`).addEventListener(`click`, () => setEdgeMode(edgeMode === `preview` ? `pin` : `fold`));
   $(`fold`).addEventListener('click', () => setCompact(!compact));
   $('spaces').addEventListener('click', spaces);
   $('space-name').addEventListener('click', spaces);
@@ -938,7 +1002,8 @@ function wire() {
     if (!$(`clock-calendar`).hidden) toggleCalendar(false);
     else if (!$('sheet').hidden) closeSheet();
     else if (!isPalette && $('search').value) { $('search').value = ''; drawEntries(); }
-    else api.hide();
+    else if (edgeMode === `preview`) setEdgeMode(`fold`);
+    else if (edgeMode === `pin`) api.hide();
   });
   const tip = $(`tip`);
   let tipTimer;
@@ -1006,6 +1071,7 @@ api.load().then(data => {
     draw();
   });
   api.on('search-focus', searchFocus);
+  api.on(`edge-open`, () => setEdgeMode(`preview`));
   api.on(`tray-motion`, ({ x, y, closing }) => {
     trayMotion?.cancel();
     if (matchMedia(`(prefers-reduced-motion: reduce)`).matches) return;

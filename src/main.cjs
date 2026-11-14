@@ -75,7 +75,7 @@ function boundsFor(display, settings) {
   const width = Math.min(area.width, state.prefs.width + 110);
   const height = Math.max(180, Math.min(760, area.height - 30));
   return {
-    x: settings.side === 'left' ? area.x + 12 : area.x + area.width - width - 12,
+    x: settings.side === 'left' ? area.x : area.x + area.width - width,
     y: area.y + Math.round((area.height - height) / 2), width, height
   };
 }
@@ -180,6 +180,11 @@ function tick() {
     const fullscreen = state.prefs.hideFullscreen && covers(foreground, physical);
     if (fullscreen && !entry.fullscreen) entry.overrideFullscreen = false;
     entry.fullscreen = fullscreen;
+    if (entry.edgePanel) {
+      if (fullscreen && !entry.overrideFullscreen) entry.win.hide();
+      else if (!entry.win.isVisible()) entry.win.showInactive();
+      continue;
+    }
     const show = (!fullscreen || entry.overrideFullscreen) && (entry.manual || (!entry.suppressed && (settings.mode === 'fixed' || entry.revealed)));
     if (show && !entry.win.isVisible()) entry.win.showInactive();
     if (!show && entry.win.isVisible()) entry.win.hide();
@@ -203,6 +208,13 @@ function showLauncher(search = false) {
   }
   const entry = windows.get(preferred.id) || [...windows.values()][0];
   if (!entry) return;
+  if (entry.edgePanel) {
+    entry.overrideFullscreen = true;
+    entry.win.show();
+    entry.win.webContents.send('edge-open');
+    if (search) entry.win.webContents.send('search-focus');
+    return;
+  }
   if (!restoring && !search && entry.win.isVisible() && entry.win.isFocused()) {
     hideLauncher(entry);
     return;
@@ -527,6 +539,15 @@ function registerHandlers() {
     else if (firstShape) tick();
   });
   handle('show-search', () => showLauncher(true));
+  handle('edge-panel', (entry, mode) => {
+    if (entry.isPalette || !['fold', 'preview', 'pin'].includes(mode)) return;
+    if (mode === 'preview' && !entry.edgePanel) return;
+    entry.edgePanel = mode !== 'pin';
+    entry.manual = mode === 'pin';
+    entry.suppressed = false;
+    entry.win.setSkipTaskbar(mode === 'fold');
+    if (mode === 'pin') entry.win.setAlwaysOnTop(true);
+  });
   handle('minimize-to-tray', entry => minimizeToTray(entry));
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {
