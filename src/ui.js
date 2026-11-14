@@ -135,7 +135,7 @@ function styles() {
   document.body.classList.toggle('no-blur', !prefs.blur);
   document.body.classList.toggle('compact-labels', prefs.compactLabels);
   const fold = $('fold');
-  const towardRight = compact !== (config().side === 'left');
+  const towardRight = compact === (config().side === 'left');
   fold.replaceChildren(icon(towardRight ? 'caret-right' : 'caret-left'));
   fold.setAttribute('aria-label', compact ? 'توسيع الشريط' : 'تصغير الشريط');
   fold.title = fold.getAttribute('aria-label');
@@ -230,28 +230,29 @@ function dropTarget(node, group, before) {
 function drawEntries() {
   const entries = $('entries');
   const scroll = entries.scrollTop;
-  entries.replaceChildren();
+  const list = $('entry-list');
+  list.replaceChildren();
   const q = $('search').value.trim().toLocaleLowerCase();
   const items = visibleItems();
   if (q) {
     const matches = items.filter(item => `${item.name} ${item.target}`.toLocaleLowerCase().includes(q));
-    entries.append(...matches.map(makeItem));
-    if (!matches.length) entries.append(el('p', 'empty', 'ما في نتائج'));
+    list.append(...matches.map(makeItem));
+    if (!matches.length) list.append(el('p', 'empty', 'ما في نتائج'));
     entries.scrollTop = scroll;
     return;
   }
   const section = (name, contents, group) => {
     const heading = el('div', 'section', name);
     dropTarget(heading, group);
-    entries.append(heading, ...contents.map(makeItem));
+    list.append(heading, ...contents.map(makeItem));
   };
   const groups = state.groups.filter(group => group.space === state.active);
   const pinned = items.filter(item => item.pinned);
   const ordinary = items.filter(item => !item.pinned && (!item.group || !groups.some(group => group.id === item.group)));
   if (pinned.length) section('المثبتة', pinned, '');
   section('الاختصارات', ordinary, '');
-  if (!items.length && !groups.length) entries.append(el('p', 'empty', 'اسحب تطبيق او ملف او مجلد الى الشريط، او اضغط اضافة عنصر'));
-  if (groups.length) entries.append(el('div', 'section', 'المجموعات'));
+  if (!items.length && !groups.length) list.append(el('p', 'empty', 'اسحب تطبيق او ملف او مجلد الى الشريط، او اضغط اضافة عنصر'));
+  if (groups.length) list.append(el('div', 'section', 'المجموعات'));
   for (const group of groups) {
     const header = row(group.name, 'stack', () => change(next => {
       const target = next.groups.find(entry => entry.id === group.id);
@@ -263,11 +264,11 @@ function drawEntries() {
     header.append(caret);
     header.addEventListener('contextmenu', event => { event.preventDefault(); editGroup(group); });
     dropTarget(header, group.id);
-    entries.append(header);
+    list.append(header);
     if (!group.collapsed) {
       const children = el('div', 'group-items');
       children.append(...items.filter(item => item.group === group.id && !item.pinned).map(makeItem));
-      entries.append(children);
+      list.append(children);
     }
   }
   entries.scrollTop = scroll;
@@ -276,6 +277,7 @@ function drawEntries() {
 function closeSheet() {
   const sheet = $('sheet');
   sheet.hidden = true;
+  $('shell').classList.remove('sheet-open');
 }
 
 function showSheet(title, content) {
@@ -290,6 +292,7 @@ function showSheet(title, content) {
   body.append(content);
   sheet.replaceChildren(header, body);
   sheet.hidden = false;
+  $('shell').classList.add('sheet-open');
   animate(sheet, [{ opacity: .35, transform: 'translateY(9px) scale(.98)' }, { opacity: 1, transform: 'none' }]);
   sheet.querySelector('input:not([type=checkbox]),select')?.focus({ preventScroll: true });
 }
@@ -673,6 +676,20 @@ function reportGeometry() {
 }
 
 function wire() {
+  const shell = $('shell');
+  const sizeObserver = new ResizeObserver(() => {
+    const height = [...shell.children].filter(node => node.id !== 'sheet').reduce((total, node) => {
+      const style = getComputedStyle(node);
+      const content = node.id === 'entries' ? $('entry-list') : node;
+      return total + content.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+    }, 0);
+    const style = getComputedStyle(shell);
+    const preferred = Math.ceil(height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom));
+    shell.style.setProperty('--content-height', `${preferred}px`);
+  });
+  for (const node of [shell.querySelector('.brand'), shell.querySelector('.search-wrap'), $('entry-list'), shell.querySelector('.footer')]) {
+    sizeObserver.observe(node);
+  }
   const observer = new ResizeObserver(reportGeometry);
   observer.observe($('shell'));
   $('shell').addEventListener('transitionend', reportGeometry);

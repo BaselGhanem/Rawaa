@@ -16,7 +16,8 @@ button { cursor: pointer; color: inherit; border: 0; background: none; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 [hidden] { display: none !important; }
 .shell {
-  position: absolute; top: 8px; bottom: 8px; right: 25px;
+  position: absolute; top: 50%; right: 25px; transform: translateY(-50%);
+  height: min(var(--content-height, 230px), calc(100% - 16px));
   width: min(var(--width), calc(100% - 50px)); border: 1px solid #fff5;
   border-radius: 39px; display: flex; flex-direction: column; padding: 16px 13px 11px;
   background: linear-gradient(161deg, #fff3 0%, #fff0 34%),
@@ -36,12 +37,14 @@ body.compact .shell { width: 80px; padding-inline: 10px; }
 .wordmark strong { font-size: 20px; }
 .wordmark span { color: #fff9; font-size: 12px; }
 .fold { position: absolute; z-index: 3; top: 8px; left: -30px; width: 34px; height: 34px; display: grid; place-items: center; border: 3px solid #c5b9ab; border-radius: 50%; background: #fcf8f3; color: #332d29; box-shadow: 0 3px 9px #0004; }
-body.left .fold { left: auto; right: -30px; }
+body.left .fold { left: auto; right: -23px; }
 .search-wrap { display: flex; align-items: center; border-radius: 18px; background: #18131040; margin-block: 12px 10px; min-height: 41px; }
 .search-icon { display: grid; place-items: center; flex: 0 0 42px; min-height: 41px; font-size: 19px; border-radius: 18px; }
 .search-wrap input { border: 0; color: inherit; background: none; flex: 1; width: 0; padding: 9px 0 9px 10px; border-radius: 12px; }
 .search-wrap input::placeholder { color: #fffc; }
+.brand, .search-wrap, .footer { flex-shrink: 0; }
 .entries { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #ffffff45 transparent; }
+#entry-list { display: flow-root; }
 .section { color: #fff9; font-size: 11px; font-weight: 700; padding: 10px 11px 5px; }
 .row {
   width: 100%; display: flex; align-items: center; gap: 11px; min-height: 41px; padding: 7px 11px;
@@ -109,20 +112,23 @@ legend { padding: 0 5px; font-size: 12px; color: #fff9; }
 .shell {
   border: 0;
   background:
-    radial-gradient(ellipse at 12% 100%, rgba(var(--tint), .34), transparent 52%),
-    linear-gradient(160deg, rgba(133, 120, 111, .20), transparent 46%),
-    rgba(28, 25, 28, calc(.43 + var(--alpha) * .48));
-  box-shadow: inset 0 1px 0 #ffffff25, 0 10px 30px #110d1026;
-  transition: width 290ms cubic-bezier(.19,1,.22,1), padding 250ms ease, background 180ms;
+    radial-gradient(ellipse at 18% 100%, rgba(var(--tint), .10), transparent 54%),
+    linear-gradient(155deg, rgba(166, 174, 176, .14), transparent 55%),
+    rgba(24, 27, 29, calc(.51 + var(--alpha) * .43));
+  box-shadow: 0 10px 30px #110d1026;
+  transition: width 290ms cubic-bezier(.19,1,.22,1), height 270ms cubic-bezier(.19,1,.22,1), padding 250ms ease, background 180ms;
 }
-body.no-blur .shell { background-color: rgba(30, 27, 30, calc(.31 + var(--alpha) * .48)); }
+body.no-blur .shell { background-color: rgba(24, 27, 29, calc(.37 + var(--alpha) * .43)); }
+.shell.sheet-open { height: min(max(var(--content-height, 230px), 530px), calc(100% - 16px)); }
+.sheet-open .sheet { inset-block-start: 64px; }
 .fold {
   border: 0;
-  background: #eee7e2;
-  box-shadow: 0 3px 12px #13101452;
+  left: -23px; top: 11px; width: 28px; height: 28px;
+  background: #343b3ee8; color: #e4efed;
+  box-shadow: 0 3px 10px #1310142e;
   transition: transform 200ms ease, background-color 160ms ease;
 }
-.fold:hover { transform: scale(1.1); background: #fff7f0; }
+.fold:hover { transform: scale(1.07); background: #2d5150; color: #b2eeea; }
 .fold:active { transform: scale(.9); }
 .mark img, .row > i:first-child, .row > img { transition: transform 210ms cubic-bezier(.2,.8,.25,1); }
 .mark:hover img { transform: rotate(-10deg) scale(1.06); }
@@ -150,7 +156,7 @@ body.no-blur .shell { background-color: rgba(30, 27, 30, calc(.31 + var(--alpha)
 .footer { border-top-color: #fff1; }
 .sheet {
   border: 0;
-  background: linear-gradient(152deg,#373038,#242128 75%);
+  background: linear-gradient(152deg,#343b3e,#24292c 75%);
   box-shadow: 0 15px 45px #09080c55;
   transform-origin: center top;
 }
