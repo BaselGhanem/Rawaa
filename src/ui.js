@@ -732,7 +732,14 @@ async function settings() {
 function clock() {
   const now = new Date();
   const time = new Intl.DateTimeFormat('ar-JO', { hour: '2-digit', minute: '2-digit', hour12: state.prefs.hour12 }).format(now);
-  $('time').textContent = time;
+  const parts = new Intl.DateTimeFormat(`ar-JO-u-nu-latn`, {
+    hour: `2-digit`, minute: `2-digit`, ...(state.prefs.hour12 ? { hour12: true } : { hourCycle: `h23` })
+  }).formatToParts(now);
+  const reading = parts.filter(part => [`hour`, `minute`].includes(part.type)).map(part => part.value).join(`:`);
+  $(`time`).textContent = reading;
+  $(`clock-period`).textContent = parts.find(part => part.type === `dayPeriod`)?.value || ``;
+  $(`clock-period`).hidden = !state.prefs.hour12;
+  $(`date`).setAttribute(`aria-label`, `${time}، فتح التقويم`);
   $('date-label').textContent = new Intl.DateTimeFormat('ar-JO', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
   $('date').dataset.tip = `${time} · التقويم`;
 }
@@ -779,7 +786,7 @@ function animate(node, frames) {
 }
 
 function reportGeometry() {
-  const boxes = ['shell', 'fold', 'tip', 'toast'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
+  const boxes = ['shell', 'tip', 'toast'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
     const { left, top, right, bottom } = $(id).getBoundingClientRect();
     const x = Math.max(0, Math.floor(left));
     const y = Math.max(0, Math.floor(top));
@@ -835,10 +842,14 @@ function wire() {
     const exit = button('', () => api.hide(), `palette-close`, `x`);
     exit.title = `اخفاء لوحة البحث`;
     exit.setAttribute(`aria-label`, exit.title);
-    $(`search`).after(exit);
+    const minimize = button('', () => api.minimizeToTray().catch(errorMessage), `palette-close`, `minus`);
+    minimize.title = `تصغير بجانب ساعة ويندوز`;
+    minimize.setAttribute(`aria-label`, minimize.title);
+    $(`search`).after(minimize, exit);
     $(`search`).autofocus = true;
   }
-  $('fold').addEventListener('click', () => setCompact(!compact));
+  $(`tray-minimize`).addEventListener(`click`, () => api.minimizeToTray().catch(errorMessage));
+  $(`fold`).addEventListener('click', () => setCompact(!compact));
   $('spaces').addEventListener('click', spaces);
   $('space-name').addEventListener('click', spaces);
   $('date').addEventListener('click', () => calendar());

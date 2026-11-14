@@ -18,6 +18,7 @@ const args = (action, extra = []) => ['-NoLogo', '-NoProfile', '-NonInteractive'
 const native = (action, extra) => exec(ps, args(action, extra), { windowsHide: true, timeout: 12000 });
 let state = defaults();
 let tray;
+let trayOnly = false;
 let palette;
 
 function launcherEntries() {
@@ -160,7 +161,7 @@ function covers(rect, area) {
 }
 
 function tick() {
-  if (quitting) return;
+  if (quitting || trayOnly) return;
   const cursor = screen.getCursorScreenPoint();
   for (const display of screen.getAllDisplays()) {
     const entry = windows.get(display.id);
@@ -187,6 +188,11 @@ function tick() {
 }
 
 function showLauncher(search = false) {
+  if (trayOnly) {
+    trayOnly = false;
+    for (const entry of windows.values()) entry.suppressed = false;
+    tick();
+  }
   const preferred = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   if (search && state.prefs.searchView === 'palette') return showPalette(preferred);
   const entry = windows.get(preferred.id) || [...windows.values()][0];
@@ -201,6 +207,11 @@ function showLauncher(search = false) {
   entry.win.show();
   entry.win.focus();
   if (search) entry.win.webContents.send('search-focus');
+}
+
+function minimizeToTray() {
+  trayOnly = true;
+  launcherEntries().forEach(hideLauncher);
 }
 
 function hideLauncher(entry) {
@@ -433,11 +444,18 @@ async function fileIcon(target) {
   return icon;
 }
 
-function itemIcon(item) {
-  if (/^appx:Microsoft\.WindowsCalculator_/i.test(item.target)) {
-    return fileIcon(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'calc.exe'));
+async function itemIcon(item) {
+  const target = item.target;
+  const name = item.name.trim();
+  const calculator = /^appx:Microsoft\.WindowsCalculator_|(?:^|[\\/])(?:calc|calculatorapp)\.exe$/i.test(target)
+    || /^(calculator|الحاسبة)$/i.test(name);
+  if (calculator) return nativeImage.createFromPath(path.join(__dirname, 'calculator-icon.png')).toDataURL();
+  if (/^close[ _-]?pilot$/i.test(name) || /(?:^|[\\/])close[ _-]?pilot\.exe$/i.test(target)) {
+    return nativeImage.createFromPath(path.join(__dirname, 'closepilot-icon.png')).toDataURL();
   }
-  return fileIcon(packagedIconPaths.get(item.target) || item.target);
+  const excel = /(?:^|[\\/])excel\.exe$/i.test(target) || /^(?:microsoft )?excel(?: \d{4})?$/i.test(name);
+  if (excel) return nativeImage.createFromPath(path.join(__dirname, 'excel-icon.png')).toDataURL();
+  return fileIcon(packagedIconPaths.get(target) || target);
 }
 
 function registerHandlers() {
@@ -467,7 +485,7 @@ function registerHandlers() {
     if (!value.every(valid)) return;
     const signature = JSON.stringify(value);
     if (entry.shape === signature) return;
-    const radii = [entry.isPalette ? 24 : 39, 14, 11, 11];
+    const radii = [entry.isPalette ? 24 : 30, 14, 11, 11];
     const regions = value.flatMap(({ x, y, width, height }, index) => {
       const radius = Math.min(radii[index], Math.floor(width / 2), Math.floor(height / 2));
       const parts = [];
@@ -486,6 +504,7 @@ function registerHandlers() {
     else if (firstShape) tick();
   });
   handle('show-search', () => showLauncher(true));
+  handle('minimize-to-tray', () => minimizeToTray());
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {
     const result = await dialog.showOpenDialog(entry.win, { properties: kind === 'folder' ? ['openDirectory'] : ['openFile', 'multiSelections'] });
@@ -567,13 +586,13 @@ else {
     tray = new Tray(logo.resize({ width: 24, height: 24 }));
     tray.setToolTip('رواء | Rawaa');
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'اظهار رواء', click: () => showLauncher() },
+      { label: 'توسيع رواء', click: () => showLauncher() },
       { label: 'بحث سريع', click: () => showLauncher(true) },
-      { label: 'اخفاء الشريط', click: () => launcherEntries().forEach(hideLauncher) },
+      { label: 'تصغير بجانب الساعة', click: minimizeToTray },
       { type: 'separator' },
-      { label: 'خروج', click: () => app.quit() }
+      { label: 'اخفاء كلي (خروج)', click: () => app.quit() }
     ]));
-    tray.on('double-click', () => showLauncher());
+    tray.on('click', () => { if (trayOnly) showLauncher(); });
     registerHandlers();
     registerKeys();
     syncWindows();

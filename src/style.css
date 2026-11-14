@@ -389,3 +389,68 @@ body:not(.pebbly) .group-items > .row { animation: rawaa-group-in 200ms ease-out
     scale: 1 !important;
   }
 }
+
+/* Keep the panel readable over bright windows and busy grids. */
+body:not(.palette) .shell {
+  border-radius: 30px;
+  background-color: rgb(19 24 28 / calc(.93 + var(--alpha) * .07));
+}
+body:not(.palette).pebbly .shell { background-color: #231f1d; }
+body:not(.palette).pebbly.teal .shell { background-color: #172522; }
+body:not(.palette) .brand { min-height: 50px; }
+body:not(.palette) .wordmark { flex: 1; min-width: 0; }
+.wordmark span { overflow: hidden; text-overflow: ellipsis; }
+body:not(.palette) .fold {
+  position: static;
+  flex: 0 0 28px;
+  background: #ffffff0d;
+  box-shadow: none;
+}
+.head-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 10px;
+  color: #d1dcdf;
+  background: #ffffff0d;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+.head-button:hover, body:not(.palette) .fold:hover { background: #31504f; }
+.head-button:active { transform: scale(.92); }
+body.compact:not(.palette) .brand { flex-wrap: wrap; gap: 4px; }
+body.compact:not(.palette) .mark { flex-basis: 100%; display: grid; place-items: center; }
+body.compact:not(.palette) .shell { width: 92px; }
+body:not(.palette) .search-wrap { background: #ffffff0a; }
+body:not(.palette) .search-wrap:focus-within { background: #ffffff13; }
+.search-wrap input::placeholder { color: #acb8bd; }
+.entries { overflow-x: hidden; scrollbar-gutter: stable; }
+body.compact .entries { scrollbar-gutter: auto; }
+body:not(.palette) .shortcut-row { min-height: 42px; }
+body:not(.palette) .foot-row { min-height: 37px; }
+body .footer .clock {
+  padding: 8px 10px;
+  margin-block-start: 3px;
+  background: linear-gradient(135deg, #91ddd311, #ffffff06);
+  border-radius: 15px;
+}
+body .footer .clock:hover { background: #91ddd31b; }
+body .clock .clock-face { display: grid; gap: 5px; min-width: 0; }
+body .clock .clock-reading { display: flex; align-items: baseline; gap: 5px; justify-self: start; }
+body .clock #time {
+  font: 600 27px/1 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.05em;
+  color: #ecfffc;
+}
+body .clock #clock-period { color: #9fd7cf; font-size: 11px; }
+body .clock #date-label { color: #c0cdce; }
+body.compact .footer .clock { justify-content: center; padding-inline: 2px; }
+body.compact .clock #time { font-size: 19px; }
+body.compact .clock .clock-reading { gap: 3px; }
+body.compact .clock #clock-period { font-size: 9px; }
+body.compact .clock #date-label { display: none; }
+body.palette .clock #time { font-size: 16px; }
+body.compact .clock .clock-face { display: grid; }
+body.compact .clock .clock-reading { display: flex; }

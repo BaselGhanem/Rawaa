@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('rawaa', {
   icon: id => ipcRenderer.invoke('icon', id),
   geometry: value => ipcRenderer.invoke('geometry', value),
   showSearch: () => ipcRenderer.invoke('show-search'),
+  minimizeToTray: () => ipcRenderer.invoke('minimize-to-tray'),
   hide: () => ipcRenderer.invoke('hide'),
   backup: action => ipcRenderer.invoke('backup', action),
   updates: () => ipcRenderer.invoke('updates'),
