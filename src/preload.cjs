@@ -10,6 +10,10 @@ contextBridge.exposeInMainWorld('rawaa', {
   icon: id => ipcRenderer.invoke('icon', id),
   geometry: value => ipcRenderer.invoke('geometry', value),
   showSearch: () => ipcRenderer.invoke('show-search'),
+  addShelf: paths => ipcRenderer.invoke('shelf-add', paths),
+  removeShelf: id => ipcRenderer.invoke('shelf-remove', id),
+  openShelf: id => ipcRenderer.invoke('shelf-open', id),
+  dragShelf: id => ipcRenderer.send('shelf-drag', id),
   dockDrag: action => ipcRenderer.invoke('dock-drag', action),
   edgePanel: mode => ipcRenderer.invoke('edge-panel', mode),
   minimizeToTray: () => ipcRenderer.invoke('minimize-to-tray'),
@@ -17,7 +21,7 @@ contextBridge.exposeInMainWorld('rawaa', {
   backup: action => ipcRenderer.invoke('backup', action),
   updates: () => ipcRenderer.invoke('updates'),
   on: (event, callback) => {
-    if (['state', 'search-focus', 'edge-open', 'dock-landed', 'tray-motion', 'update-status'].includes(event)) {
+    if (['state', 'search-focus', 'edge-open', 'dock-landed', 'tray-motion', 'update-status', 'shelf-changed', 'shelf-error'].includes(event)) {
       ipcRenderer.on(event, (_event, value) => callback(value));
     }
   }

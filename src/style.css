@@ -677,3 +677,50 @@ body:not(.dock-top):not(.palette) .entries:hover { scrollbar-color: #ffffff28 tr
   font-size: 11px;
   color: #a8bbb9;
 }
+
+#edge-handle.has-shelf {
+  width: 22px;
+  color: #f4fffd;
+  font-size: 11px;
+  font-weight: 700;
+}
+body.dock-top #edge-handle.has-shelf { width: 70px; height: 19px; }
+#edge-handle.shelf-drop-ready, #spaces.shelf-drop-ready {
+  outline: 2px solid #92f5e3;
+  outline-offset: -2px;
+  background: #087a71;
+}
+#shelf-button .tail { color: var(--accent); }
+body.compact #shelf-button,
+body.dock-top #shelf-button { position: relative; }
+body.compact #shelf-button .tail,
+body.dock-top #shelf-button .tail {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  inset: 0 0 auto auto;
+  min-width: 15px;
+  background: #225351;
+  border-radius: 10px;
+  font-size: 9px;
+}
+.shelf-panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+}
+.shelf-panel.shelf-drop-ready { border-color: #74d4c7; background: #0c494569; }
+.shelf-hint { margin: 2px 0; color: #acc4c0; font-size: 12px; }
+.shelf-files { display: grid; gap: 5px; }
+.shelf-file {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 12px;
+  background: #ffffff08;
+}
+.shelf-file .row { min-width: 0; margin: 0; cursor: grab; }
+.shelf-file .row:active { cursor: grabbing; }
+.shelf-file .plain { flex: none; margin-inline-end: 4px; }

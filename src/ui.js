@@ -18,6 +18,7 @@ let paletteIndex = 0;
 
 let dragged;
 let trayMotion;
+let shelf = [];
 let edgeMotion;
 let edgeTimer;
 let edgeMode = `pin`;
@@ -658,6 +659,83 @@ function editGroup(existing) {
   showSheet(existing ? 'تعديل المجموعة' : 'مجموعة جديدة', form);
 }
 
+function updateShelf(items) {
+  shelf = items;
+  const count = String(items.length);
+  const handle = $(`edge-handle`);
+  handle.textContent = items.length ? count : ``;
+  handle.classList.toggle(`has-shelf`, items.length > 0);
+  handle.setAttribute(`aria-label`, items.length ? `فتح رواء من الحافة، ${count} في رف الملفات` : `فتح رواء من الحافة`);
+  $(`shelf-button`).hidden = !items.length;
+  $(`shelf-count`).textContent = count;
+  const list = document.querySelector(`.shelf-files`);
+  if (list && !$(`sheet`).hidden) renderShelf(list);
+  requestAnimationFrame(reportGeometry);
+}
+
+function renderShelf(list) {
+  list.replaceChildren();
+  if (!shelf.length) {
+    list.append(el(`p`, `empty`, `اسحب ملف من مستكشف ويندوز وحطه هون`));
+    return;
+  }
+  for (const item of shelf) {
+    const card = el(`div`, `shelf-file`);
+    const file = row(item.name, `file`, () => api.openShelf(item.id).catch(errorMessage));
+    file.title = `${item.name} · اسحب لبرنامج ثاني`;
+    file.draggable = true;
+    file.addEventListener(`dragstart`, event => {
+      event.preventDefault();
+      event.stopPropagation();
+      api.dragShelf(item.id);
+    });
+    const remove = button(``, () => api.removeShelf(item.id).catch(errorMessage), `plain`, `x`);
+    remove.title = `ازالة من الرف`;
+    remove.setAttribute(`aria-label`, `ازالة ${item.name} من الرف`);
+    card.append(file, remove);
+    list.append(card);
+  }
+}
+
+function shelfDropTarget(target) {
+  target.addEventListener(`dragover`, event => {
+    if (!event.dataTransfer.types.includes(`Files`)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = `copy`;
+    clearTimeout(edgeTimer);
+    target.classList.add(`shelf-drop-ready`);
+  });
+  target.addEventListener(`dragleave`, event => {
+    if (!target.contains(event.relatedTarget)) target.classList.remove(`shelf-drop-ready`);
+  });
+  target.addEventListener(`drop`, async event => {
+    if (!event.dataTransfer.files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    target.classList.remove(`shelf-drop-ready`);
+    try {
+      const paths = [...event.dataTransfer.files].map(file => api.filePath(file)).filter(Boolean);
+      const result = await api.addShelf(paths);
+      if (edgeMode !== `fold`) toast(result.accepted ? `تمت الاضافة للرف` : `ما انضافت ملفات جديدة للرف`);
+      else if (result.accepted) animate(target, [{ opacity: .45 }, { opacity: 1 }]);
+    } catch (error) { errorMessage(error); }
+  });
+}
+
+function openShelf() {
+  if (!$(`sheet`).hidden) closeSheet();
+  if (!$(`clock-calendar`).hidden) toggleCalendar(false);
+  const wasCompact = compact;
+  const content = el(`div`, `shelf-panel`);
+  const list = el(`div`, `shelf-files`);
+  content.append(el(`p`, `shelf-hint`, `اسحب الملف من هون للمرفقات، او اضغط عليه لفتحه`), list);
+  renderShelf(list);
+  shelfDropTarget(content);
+  showSheet(`رف الملفات`, content);
+  if (wasCompact) $(`sheet`).dataset.restoreCompact = `true`;
+}
+
 function dockControls() {
   if (!$(`sheet`).hidden) closeSheet();
   if (!$(`clock-calendar`).hidden) toggleCalendar(false);
@@ -670,7 +748,8 @@ function dockControls() {
       closeSheet();
       setEdgeMode(pin ? `pin` : `fold`);
     }),
-    row(`مساحات العمل`, `squares-four`, () => { closeSheet(); spaces(); })
+    row(`مساحات العمل`, `squares-four`, () => { closeSheet(); spaces(); }),
+    row(`رف الملفات`, `tray`, openShelf)
   );
   box.append(el(`p`, `dock-controls-hint`, `اسحب شعار رواء لنقله`));
   showSheet(`تحكم برواء`, box);
@@ -938,6 +1017,9 @@ function reportGeometry() {
 function wire() {
   const shell = $('shell');
   const grip = $(`spaces`);
+  shelfDropTarget(grip);
+  shelfDropTarget($(`edge-handle`));
+  $(`shelf-button`).addEventListener(`click`, openShelf);
   let dockPointer;
   let suppressGripClick = false;
   grip.addEventListener(`pointerdown`, event => {
@@ -1136,7 +1218,10 @@ function wire() {
 api.load().then(data => {
   ({ state, displays, version, updateStatus } = data);
   compact = !isPalette && config().compact;
+  api.on(`shelf-changed`, updateShelf);
+  api.on(`shelf-error`, errorMessage);
   wire();
+  updateShelf(data.shelf);
   draw();
   setInterval(clock, 1000);
   api.on('state', next => {

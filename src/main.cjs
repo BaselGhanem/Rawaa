@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { execFile, spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const { promisify } = require('node:util');
 const { defaults, normalize } = require('./store.cjs');
 
@@ -39,6 +40,42 @@ let updatePromptOpen = false;
 let updateNotification;
 let notifiedVersion;
 let saveQueue = Promise.resolve();
+const shelf = new Map();
+
+function shelfItems() {
+  return [...shelf.values()].map(({ id, name }) => ({ id, name }));
+}
+
+function broadcastShelf() {
+  const items = shelfItems();
+  for (const { win } of launcherEntries()) {
+    if (!win.isDestroyed()) win.webContents.send('shelf-changed', items);
+  }
+  return items;
+}
+
+async function addShelfFiles(paths) {
+  const candidates = Array.isArray(paths) ? paths.slice(0, 50) : [];
+  const files = await Promise.all(candidates.map(async value => {
+    if (typeof value !== 'string' || !path.isAbsolute(value)) return null;
+    const target = path.normalize(value);
+    const info = await fsp.stat(target).catch(() => null);
+    return info?.isFile() ? target : null;
+  }));
+  const known = new Set([...shelf.values()].map(item => windowsOS ? item.target.toLowerCase() : item.target));
+  let accepted = 0;
+  for (const target of files) {
+    if (!target) continue;
+    const key = windowsOS ? target.toLowerCase() : target;
+    if (known.has(key)) continue;
+    if (shelf.size >= 50) break;
+    const id = randomUUID();
+    shelf.set(id, { id, target, name: path.basename(target) });
+    known.add(key);
+    accepted++;
+  }
+  return { items: broadcastShelf(), accepted };
+}
 
 function configPath() {
   return path.join(app.getPath('userData'), 'rawaa.json');
@@ -581,12 +618,37 @@ async function itemIcon(item) {
 }
 
 function registerHandlers() {
+  const senderEntry = event => launcherEntries().find(candidate => candidate.win.webContents === event.sender);
   const handle = (channel, fn) => ipcMain.handle(channel, (event, value) => {
-    const entry = launcherEntries().find(candidate => candidate.win.webContents === event.sender);
+    const entry = senderEntry(event);
     if (!entry || event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid sender');
     return fn(entry, value);
   });
-  handle('load', () => ({ state, displays: displaysInfo(), version: app.getVersion(), updateStatus }));
+  handle('load', () => ({ state, displays: displaysInfo(), version: app.getVersion(), updateStatus, shelf: shelfItems() }));
+  handle('shelf-add', (_entry, paths) => addShelfFiles(paths));
+  handle('shelf-remove', (_entry, id) => {
+    shelf.delete(id);
+    return broadcastShelf();
+  });
+  handle('shelf-open', async (_entry, id) => {
+    const item = shelf.get(id);
+    if (!item) return;
+    const error = await shell.openPath(item.target);
+    if (error) throw new Error(`تعذر فتح ${item.name}`);
+  });
+  const dragIcon = nativeImage.createFromPath(path.join(__dirname, 'rawaa.png')).resize({ width: 32, height: 32 });
+  ipcMain.on('shelf-drag', (event, id) => {
+    const entry = senderEntry(event);
+    if (!entry || event.senderFrame !== event.sender.mainFrame) return;
+    const item = shelf.get(id);
+    if (!item) return;
+    try {
+      if (!fs.statSync(item.target).isFile()) throw new Error('File unavailable');
+      event.sender.startDrag({ file: item.target, icon: dragIcon });
+    } catch {
+      event.sender.send('shelf-error', `تعذر سحب ${item.name} من مكانه الاصلي`);
+    }
+  });
   handle('save', async (_entry, value) => {
     const next = normalize(value);
     if (!screen.getAllDisplays().some(display => (next.displays[display.id]?.mode || (display.id === screen.getPrimaryDisplay().id ? 'fixed' : 'off')) !== 'off')) {
