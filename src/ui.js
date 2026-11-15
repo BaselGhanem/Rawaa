@@ -199,8 +199,10 @@ function styles() {
   document.body.classList.toggle('no-blur', !prefs.blur);
   document.body.classList.toggle('compact-labels', prefs.compactLabels);
   const fold = $('fold');
-  const towardRight = compact === (config().side === 'left');
-  fold.replaceChildren(icon(towardRight ? 'caret-right' : 'caret-left'));
+  const side = config().side;
+  const towardRight = compact === (side === 'left');
+  const direction = side === 'top' ? (compact ? 'caret-down' : 'caret-up') : (towardRight ? 'caret-right' : 'caret-left');
+  fold.replaceChildren(icon(direction));
   fold.setAttribute('aria-label', compact ? 'توسيع الشريط' : 'تصغير الشريط');
   fold.title = fold.getAttribute('aria-label');
   requestAnimationFrame(reportGeometry);
@@ -899,7 +901,13 @@ function animate(node, frames) {
 
 function reportGeometry() {
   const boxes = ['shell', 'tip', 'toast', 'edge-handle'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
-    const { left, top, right, bottom } = $(id).getBoundingClientRect();
+    const node = $(id);
+    const horizontalShell = id === 'shell' && document.body.classList.contains('dock-top');
+    const { left, top, width, height } = horizontalShell
+      ? { left: node.offsetLeft, top: node.offsetTop, width: node.offsetWidth, height: node.offsetHeight }
+      : node.getBoundingClientRect();
+    const right = left + width;
+    const bottom = top + height;
     const x = Math.max(0, Math.floor(left));
     const y = Math.max(0, Math.floor(top));
     return { x, y, width: Math.min(innerWidth, Math.ceil(right)) - x, height: Math.min(innerHeight, Math.ceil(bottom)) - y };
@@ -960,6 +968,7 @@ function wire() {
   shell.addEventListener(`pointerleave`, resetMagnification);
   shell.addEventListener(`dragstart`, resetMagnification);
   const sizeObserver = new ResizeObserver(() => {
+    if (document.body.classList.contains('dock-top')) return;
     const height = [...shell.children].filter(node => node.id !== 'sheet').reduce((total, node) => {
       const style = getComputedStyle(node);
       const content = node.id === 'entries' ? $('entry-list') : node;

@@ -257,7 +257,7 @@ function tick() {
     const area = display.bounds;
     const edge = settings.side === 'left' ? area.x : area.x + area.width - 1;
     const nearEdge = settings.side === 'top'
-      ? Math.abs(cursor.y - area.y) <= 8 && cursor.x >= bounds.x && cursor.x < bounds.x + bounds.width
+      ? Math.abs(cursor.y - display.workArea.y) <= 8 && cursor.x >= bounds.x && cursor.x < bounds.x + bounds.width
       : Math.abs(cursor.x - edge) <= 8 && cursor.y >= bounds.y && cursor.y < bounds.y + bounds.height;
     const inWindow = cursor.x >= bounds.x - 13 && cursor.x <= bounds.x + bounds.width + 13 &&
       cursor.y >= bounds.y - 3 && cursor.y <= bounds.y + bounds.height + 3;
