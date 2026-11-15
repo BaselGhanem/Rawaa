@@ -14,6 +14,9 @@ using System.Text;
 using System.Collections.Generic;
 public static class Native {
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct Point { public int X,Y; }
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
+    [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point point);
     public delegate bool Callback(IntPtr window, IntPtr data);
     [DllImport("user32.dll")] public static extern bool EnumWindows(Callback fn, IntPtr data);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -128,16 +131,30 @@ if ($Action -eq 'list') {
 }
 [void][Native]::SetThreadDpiAwarenessContext([IntPtr](-4))
 if ($Action -eq 'monitor') {
+    $pressed = $false
+    $previous = ''
     while ($true) {
+        $mouseDown = ([Native]::GetAsyncKeyState(1) -lt 0) -or ([Native]::GetAsyncKeyState(2) -lt 0)
+        if ($mouseDown -and !$pressed) {
+            $point = [Native+Point]::new()
+            if ([Native]::GetCursorPos([ref]$point)) {
+                [Console]::WriteLine(('click {0} {1}' -f $point.X,$point.Y))
+            }
+        }
+        $pressed = $mouseDown
         $h = [Native]::GetForegroundWindow()
         $rect = [Native+Rect]::new()
         $class = [Text.StringBuilder]::new(256)
         [void][Native]::GetClassName($h, $class, 256)
         $skip = @('Progman','WorkerW','Shell_TrayWnd','Shell_SecondaryTrayWnd') -contains $class.ToString()
         if (!$skip -and [Native]::GetWindowRect($h,[ref]$rect)) {
-            [Console]::WriteLine(('{0} {1} {2} {3}' -f $rect.Left,$rect.Top,$rect.Right,$rect.Bottom))
-        } else { [Console]::WriteLine('none') }
-        Start-Sleep -Milliseconds 360
+            $current = '{0} {1} {2} {3}' -f $rect.Left,$rect.Top,$rect.Right,$rect.Bottom
+        } else { $current = 'none' }
+        if ($current -ne $previous) {
+            [Console]::WriteLine($current)
+            $previous = $current
+        }
+        Start-Sleep -Milliseconds 35
     }
 }
 $h = [Native]::Find($Target)

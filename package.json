@@ -1,6 +1,6 @@
 {
   "name": "rawaa",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "description": "Rawaa desktop launcher for Windows 11",
   "main": "src/main.cjs",
   "scripts": {

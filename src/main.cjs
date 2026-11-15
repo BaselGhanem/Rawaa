@@ -31,6 +31,8 @@ function launcherEntries() {
 let monitor;
 let interval;
 let foreground;
+let modalDialogs = 0;
+let shelfDragging = false;
 let quitting = false;
 let updateStatus = '';
 let updatesReady = false;
@@ -145,6 +147,7 @@ function makeWindow(display, settings, isPalette = false) {
   if (isPalette) palette = entry;
   else windows.set(display.id, entry);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  if (!windowsOS && !isPalette) win.on('blur', () => requestAutoFold(entry));
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.once('ready-to-show', () => {
     entry.ready = true;
@@ -275,6 +278,7 @@ async function finishDockDrag(commit) {
     destination.manual = true;
     destination.suppressed = false;
     destination.edgePanel = false;
+    destination.edgeMode = 'pin';
     destination.win.setSkipTaskbar(false);
     if (destination.ready && (!windowsOS || destination.shape)) destination.win.webContents.send('dock-landed');
     else destination.dockLanding = true;
@@ -390,11 +394,42 @@ function registerKeys() {
   return toggle && search;
 }
 
+function requestAutoFold(entry) {
+  if (modalDialogs || shelfDragging || dockDrag || entry.isPalette || entry.edgeMode === 'fold' ||
+      !entry.win.isVisible()) return;
+  entry.win.webContents.send('edge-autofold');
+}
+
+function handleOutsideClick(point) {
+  if (launcherEntries().some(entry => {
+    if (!entry.win.isVisible()) return false;
+    const bounds = entry.win.getBounds();
+    const x = point.x - bounds.x;
+    const y = point.y - bounds.y;
+    return entry.hitRegions?.some(rect => x >= rect.x && x < rect.x + rect.width &&
+      y >= rect.y && y < rect.y + rect.height);
+  })) return;
+  windows.forEach(requestAutoFold);
+}
+
+async function whileModal(action) {
+  modalDialogs++;
+  try { return await action(); }
+  finally { modalDialogs--; }
+}
+
 function startMonitor() {
   if (!windowsOS || quitting) return;
   monitor = spawn(ps, args('monitor'), { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
   const lines = require('node:readline').createInterface({ input: monitor.stdout });
-  lines.on('line', line => { foreground = /^-?\d+( -?\d+){3}$/.test(line) ? line.split(' ').map(Number) : null; });
+  lines.on('line', line => {
+    const click = /^click (-?\d+) (-?\d+)$/.exec(line);
+    if (click) {
+      handleOutsideClick(screen.screenToDipPoint({ x: Number(click[1]), y: Number(click[2]) }));
+    } else {
+      foreground = /^-?\d+( -?\d+){3}$/.test(line) ? line.split(' ').map(Number) : null;
+    }
+  });
   monitor.on('error', () => { foreground = null; });
   monitor.once('close', () => {
     foreground = null;
@@ -506,9 +541,9 @@ async function offerUpdate(entry) {
       buttons: [ready ? 'تثبيت واعادة التشغيل' : 'تنزيل التحديث', 'لاحقا'],
       defaultId: 0, cancelId: 1
     };
-    const { response } = entry?.win.isVisible()
-      ? await dialog.showMessageBox(entry.win, options)
-      : await dialog.showMessageBox(options);
+    const { response } = await whileModal(() => entry?.win.isVisible()
+      ? dialog.showMessageBox(entry.win, options)
+      : dialog.showMessageBox(options));
     if (response !== 0) return '';
     if (!ready) {
       status('جاري تنزيل التحديث');
@@ -644,9 +679,12 @@ function registerHandlers() {
     if (!item) return;
     try {
       if (!fs.statSync(item.target).isFile()) throw new Error('File unavailable');
+      shelfDragging = true;
       event.sender.startDrag({ file: item.target, icon: dragIcon });
     } catch {
       event.sender.send('shelf-error', `تعذر سحب ${item.name} من مكانه الاصلي`);
+    } finally {
+      shelfDragging = false;
     }
   });
   handle('save', async (_entry, value) => {
@@ -683,6 +721,7 @@ function registerHandlers() {
     });
     const firstShape = !entry.shape;
     entry.win.setShape(regions);
+    entry.hitRegions = regions;
     entry.shape = signature;
     if (firstShape && entry.isPalette) revealPalette(entry);
     else if (firstShape) {
@@ -709,6 +748,7 @@ function registerHandlers() {
     if (entry.isPalette || !['fold', 'preview', 'pin'].includes(mode)) return;
     if (mode === 'preview' && !entry.edgePanel) return;
     entry.edgePanel = mode !== 'pin';
+    entry.edgeMode = mode;
     entry.manual = mode === 'pin';
     entry.suppressed = false;
     entry.win.setSkipTaskbar(mode === 'fold');
@@ -717,7 +757,7 @@ function registerHandlers() {
   handle('minimize-to-tray', entry => minimizeToTray(entry));
   handle('hide', entry => hideLauncher(entry));
   handle('choose', async (entry, kind) => {
-    const result = await dialog.showOpenDialog(entry.win, { properties: kind === 'folder' ? ['openDirectory'] : ['openFile', 'multiSelections'] });
+    const result = await whileModal(() => dialog.showOpenDialog(entry.win, { properties: kind === 'folder' ? ['openDirectory'] : ['openFile', 'multiSelections'] }));
     return (await Promise.all(result.filePaths.map(describe))).filter(Boolean);
   });
   handle('paths', async (_entry, paths) => (await Promise.all((Array.isArray(paths) ? paths.slice(0, 100) : []).map(describe))).filter(Boolean));
@@ -749,22 +789,22 @@ function registerHandlers() {
   });
   handle('backup', async (entry, action) => {
     if (action === 'export') {
-      const result = await dialog.showSaveDialog(entry.win, { defaultPath: 'Rawaa-settings.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
+      const result = await whileModal(() => dialog.showSaveDialog(entry.win, { defaultPath: 'Rawaa-settings.json', filters: [{ name: 'JSON', extensions: ['json'] }] }));
       if (!result.canceled) await fsp.writeFile(result.filePath, JSON.stringify(state, null, 2), 'utf8');
       return !result.canceled;
     }
     if (action !== 'import') return false;
-    const result = await dialog.showOpenDialog(entry.win, { properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+    const result = await whileModal(() => dialog.showOpenDialog(entry.win, { properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] }));
     if (result.canceled) return false;
     const next = await readConfiguration(result.filePaths[0]);
     const displays = screen.getAllDisplays();
     if (displays.every(display => (next.displays[display.id]?.mode || (display.id === screen.getPrimaryDisplay().id ? 'fixed' : 'off')) === 'off')) {
       next.displays[screen.getPrimaryDisplay().id] = { mode: 'fixed', side: 'right', compact: false };
     }
-    const confirmation = await dialog.showMessageBox(entry.win, {
+    const confirmation = await whileModal(() => dialog.showMessageBox(entry.win, {
       type: 'question', message: 'استبدال اعدادات رواء الحالية؟',
       detail: 'رح يتم تحميل المساحات والاختصارات من الملف المختار', buttons: ['استيراد', 'الغاء'], defaultId: 1, cancelId: 1
-    });
+    }));
     if (confirmation.response !== 0) return false;
     await saveConfiguration(next);
     return true;

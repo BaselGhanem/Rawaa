@@ -1120,6 +1120,7 @@ function wire() {
       edgeTimer = setTimeout(() => setEdgeMode(`fold`), 420);
     }
   });
+  $(`edge-minimize`).addEventListener(`click`, () => setEdgeMode(`fold`));
   $('space-name').addEventListener('click', spaces);
   $(`date`).addEventListener(`click`, () => toggleCalendar());
   $('add').addEventListener('click', addMenu);
@@ -1241,6 +1242,9 @@ api.load().then(data => {
     ]);
   });
   api.on(`edge-open`, () => setEdgeMode(`preview`));
+  api.on(`edge-autofold`, () => {
+    if (!compact && !dragged) setEdgeMode(`fold`);
+  });
   api.on(`tray-motion`, ({ x, y, closing }) => {
     trayMotion?.cancel();
     if (matchMedia(`(prefers-reduced-motion: reduce)`).matches) return;
