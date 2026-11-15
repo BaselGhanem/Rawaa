@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, dialog, globalShortcut, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, dialog, globalShortcut, nativeImage, Notification, powerMonitor } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -560,6 +560,11 @@ async function offerUpdate(entry) {
   }
 }
 
+function openUpdatePrompt() {
+  const entries = launcherEntries();
+  return offerUpdate(entries.find(entry => entry.win.isFocused()) || entries.find(entry => entry.win.isVisible()));
+}
+
 function setupUpdates() {
   if (!windowsOS || !app.isPackaged) return;
   autoUpdater.autoDownload = false;
@@ -568,14 +573,17 @@ function setupUpdates() {
   autoUpdater.on('update-available', info => {
     updateInfo = info;
     status(`تحديث رواء ${info.version} متاح`);
+    tray?.setToolTip(`رواء | تحديث ${info.version} متاح`);
     if (updatePromptOpen || notifiedVersion === info.version || !Notification.isSupported()) return;
     notifiedVersion = info.version;
     updateNotification = new Notification({ title: `رواء • تحديث ${info.version}`, body: 'اضغط لتنزيل التحديث وتثبيته من داخل رواء' });
-    updateNotification.on('click', () => offerUpdate(launcherEntries().find(entry => entry.win.isFocused()) || launcherEntries().find(entry => entry.win.isVisible())));
+    updateNotification.on('click', openUpdatePrompt);
+    updateNotification.on('failed', (_event, error) => console.error('Rawaa update notification:', error));
     updateNotification.show();
   });
   autoUpdater.on('update-not-available', () => {
     updateInfo = undefined;
+    tray?.setToolTip('رواء | Rawaa');
     status(`رواء على اخر اصدار • ${app.getVersion()}`);
   });
   autoUpdater.on('download-progress', progress => status(`جاري تنزيل التحديث ${Math.floor(progress.percent)}٪`));
@@ -584,9 +592,12 @@ function setupUpdates() {
     console.error('Rawaa updater:', error.message);
     status(error.statusCode === 404 ? 'بيانات التحديث غير متاحة حاليا' : 'تعذر اكمال التحديث، جرب مرة ثانية');
   });
-  const check = () => { if (!updatePromptOpen && !updatesReady) checkUpdates().catch(() => {}); };
-  setTimeout(check, 3000).unref();
-  setInterval(check, 4 * 60 * 60 * 1000).unref();
+  const check = () => {
+    if (!quitting && !updatePromptOpen && !updatesReady) checkUpdates().catch(() => {});
+  };
+  check();
+  setInterval(check, 60_000).unref();
+  powerMonitor.on('resume', check);
 }
 
 function transparentIcon(image) {
@@ -838,6 +849,11 @@ else {
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'توسيع رواء', click: () => showLauncher() },
       { label: 'بحث سريع', click: () => showLauncher(true) },
+      { label: 'تحديثات رواء', click: async () => {
+        if (!windowsOS || !app.isPackaged) return;
+        const message = await openUpdatePrompt();
+        if (message && !updateInfo) await whileModal(() => dialog.showMessageBox({ title: 'تحديثات رواء', message }));
+      } },
       { label: 'تصغير بجانب الساعة', click: () => minimizeToTray(launcherEntries().find(entry => entry.win.isFocused())) },
       { type: 'separator' },
       { label: 'اخفاء كلي (خروج)', click: () => app.quit() }
