@@ -524,8 +524,8 @@ body:not(.palette) .shell { transition-property: width, height, padding, backgro
   body:not(.palette) .shell { transition-duration: 290ms, 270ms, 250ms, 180ms, 240ms, 240ms; }
 }
 
-#dock-grip { cursor: grab; touch-action: none; }
-.dock-dragging #dock-grip { cursor: grabbing; background: #31504f; }
+#spaces { cursor: grab; touch-action: none; }
+.dock-dragging #spaces { cursor: grabbing; background: #31504f; }
 body.compact:not(.palette) .brand .head-button,
 body.compact:not(.palette) .brand .fold { width: 22px; flex-basis: 22px; }
 /* The horizontal dock grows with its shortcuts, up to the screen width. */
@@ -655,4 +655,25 @@ body.dock-top #edge-handle {
   body.dock-top .shell { gap: 3px; padding-inline: 6px; }
   .dock-top .search-wrap { flex-basis: 75px; }
   .dock-top .entries { padding-inline: 3px; }
+}
+
+
+#spaces { position: relative; }
+#spaces:focus-visible { outline-offset: 3px; }
+body:not(.dock-top):not(.palette) .entries {
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+}
+body:not(.dock-top):not(.palette) .entries:hover { scrollbar-color: #ffffff28 transparent; }
+.dock-controls { display: grid; gap: 4px; }
+.dock-controls .row {
+  margin: 0;
+  border-radius: 13px;
+  background: #ffffff07;
+}
+.dock-controls .row:hover { background: #8de4d020; }
+.dock-controls-hint {
+  margin: 8px 10px 2px;
+  font-size: 11px;
+  color: #a8bbb9;
 }

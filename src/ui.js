@@ -29,12 +29,9 @@ async function setEdgeMode(mode) {
   edgeMode = mode;
   const shell = $(`shell`);
   const handle = $(`edge-handle`);
-  const control = $(`tray-minimize`);
+  const control = $(`spaces`);
   const left = config().side === `left`;
   const top = config().side === `top`;
-  control.replaceChildren(icon(mode === `preview` ? `push-pin` : `minus`));
-  control.title = mode === `preview` ? `تثبيت فوق النوافذ` : `طي الشريط للحافة`;
-  control.setAttribute(`aria-label`, control.title);
   const folded = mode === `fold`;
   handle.hidden = !folded;
   handle.setAttribute(`aria-expanded`, String(!folded));
@@ -198,13 +195,6 @@ function styles() {
   document.body.classList.toggle('teal', prefs.tint === 'teal');
   document.body.classList.toggle('no-blur', !prefs.blur);
   document.body.classList.toggle('compact-labels', prefs.compactLabels);
-  const fold = $('fold');
-  const side = config().side;
-  const towardRight = compact === (side === 'left');
-  const direction = side === 'top' ? (compact ? 'caret-down' : 'caret-up') : (towardRight ? 'caret-right' : 'caret-left');
-  fold.replaceChildren(icon(direction));
-  fold.setAttribute('aria-label', compact ? 'توسيع الشريط' : 'تصغير الشريط');
-  fold.title = fold.getAttribute('aria-label');
   requestAnimationFrame(reportGeometry);
 }
 
@@ -398,6 +388,11 @@ function closeSheet() {
   const sheet = $('sheet');
   sheet.hidden = true;
   $('shell').classList.remove('sheet-open');
+  if (sheet.dataset.restoreCompact) {
+    delete sheet.dataset.restoreCompact;
+    compact = config().compact;
+    styles();
+  }
 }
 
 function showSheet(title, content) {
@@ -421,12 +416,12 @@ function showSheet(title, content) {
 
 function setCompact(value) {
   if (!$(`clock-calendar`).hidden) toggleCalendar(false);
-  compact = value;
   closeSheet();
+  compact = value;
   $('search').value = '';
   draw();
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    animate($('fold'), [{ rotate: '-18deg' }, { rotate: '8deg', offset: .7 }, { rotate: '0deg' }]);
+    animate($('spaces'), [{ rotate: '-18deg' }, { rotate: '8deg', offset: .7 }, { rotate: '0deg' }]);
   }
   change(next => { next.displays[displayId] = { ...config(), compact }; });
 }
@@ -661,6 +656,28 @@ function editGroup(existing) {
     })) closeSheet();
   });
   showSheet(existing ? 'تعديل المجموعة' : 'مجموعة جديدة', form);
+}
+
+function dockControls() {
+  if (!$(`sheet`).hidden) closeSheet();
+  if (!$(`clock-calendar`).hidden) toggleCalendar(false);
+  const wasCompact = compact;
+  const box = el(`div`, `dock-controls`);
+  const pin = edgeMode === `preview`;
+  box.append(
+    row(wasCompact ? `توسيع الشريط` : `تصغير الشريط`, wasCompact ? `arrows-out` : `arrows-in`, () => setCompact(!wasCompact)),
+    row(pin ? `تثبيت فوق النوافذ` : `طي للحافة`, pin ? `push-pin` : `minus`, () => {
+      closeSheet();
+      setEdgeMode(pin ? `pin` : `fold`);
+    }),
+    row(`مساحات العمل`, `squares-four`, () => { closeSheet(); spaces(); })
+  );
+  box.append(el(`p`, `dock-controls-hint`, `اسحب شعار رواء لنقله`));
+  showSheet(`تحكم برواء`, box);
+  const sheet = $(`sheet`);
+  sheet.setAttribute(`tabindex`, `-1`);
+  sheet.focus({ preventScroll: true });
+  if (wasCompact) sheet.dataset.restoreCompact = `true`;
 }
 
 function spaces() {
@@ -920,10 +937,12 @@ function reportGeometry() {
 
 function wire() {
   const shell = $('shell');
-  const grip = $(`dock-grip`);
+  const grip = $(`spaces`);
   let dockPointer;
+  let suppressGripClick = false;
   grip.addEventListener(`pointerdown`, event => {
     if (event.button !== 0) return;
+    suppressGripClick = false;
     dockPointer = { id: event.pointerId, x: event.screenX, y: event.screenY, started: false };
     grip.setPointerCapture(event.pointerId);
   });
@@ -931,6 +950,7 @@ function wire() {
     if (!dockPointer || dockPointer.started || dockPointer.id !== event.pointerId) return;
     if (Math.hypot(event.screenX - dockPointer.x, event.screenY - dockPointer.y) < 7) return;
     dockPointer.started = true;
+    suppressGripClick = true;
     shell.classList.add(`dock-dragging`);
     api.dockDrag(`start`).catch(errorMessage);
   });
@@ -945,7 +965,13 @@ function wire() {
   grip.addEventListener(`pointerup`, () => endDockDrag(true));
   grip.addEventListener(`lostpointercapture`, () => endDockDrag(false));
   grip.addEventListener(`pointercancel`, () => endDockDrag(false));
-  grip.addEventListener(`click`, event => { if (event.detail === 0) settings(); });
+  grip.addEventListener(`click`, event => {
+    if (!suppressGripClick || event.detail === 0) dockControls();
+  });
+  grip.addEventListener(`contextmenu`, event => {
+    event.preventDefault();
+    if (!dockPointer) dockControls();
+  });
   let magnified = [];
   function resetMagnification() {
     for (const row of magnified) row.style.removeProperty('--dock-scale');
@@ -1012,9 +1038,6 @@ function wire() {
       edgeTimer = setTimeout(() => setEdgeMode(`fold`), 420);
     }
   });
-  $(`tray-minimize`).addEventListener(`click`, () => setEdgeMode(edgeMode === `preview` ? `pin` : `fold`));
-  $(`fold`).addEventListener('click', () => setCompact(!compact));
-  $('spaces').addEventListener('click', spaces);
   $('space-name').addEventListener('click', spaces);
   $(`date`).addEventListener(`click`, () => toggleCalendar());
   $('add').addEventListener('click', addMenu);
