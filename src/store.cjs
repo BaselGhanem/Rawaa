@@ -79,7 +79,7 @@ function normalize(input) {
     if (!/^-?\d+$/.test(key) || !value) continue;
     state.displays[key] = {
       mode: ['fixed', 'edge', 'off'].includes(value.mode) ? value.mode : 'fixed',
-      side: value.side === 'left' ? 'left' : 'right',
+      side: ['left', 'top'].includes(value.side) ? value.side : 'right',
       compact: value.compact === true
     };
   }

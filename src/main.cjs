@@ -19,6 +19,8 @@ const native = (action, extra) => exec(ps, args(action, extra), { windowsHide: t
 let state = defaults();
 let tray;
 let trayOnly = false;
+let dockDrag;
+let dockPreview;
 let trayTransition;
 let palette;
 
@@ -72,6 +74,10 @@ function displayConfig(display) {
 
 function boundsFor(display, settings) {
   const area = display.workArea;
+  if (settings.side === 'top') {
+    const width = Math.min(area.width, 880);
+    return { x: area.x + Math.round((area.width - width) / 2), y: area.y, width, height: Math.min(area.height, 560) };
+  }
   const width = Math.min(area.width, state.prefs.width + 110);
   const height = Math.max(180, Math.min(760, area.height - 30));
   return {
@@ -106,12 +112,20 @@ function makeWindow(display, settings, isPalette = false) {
   win.once('ready-to-show', () => {
     entry.ready = true;
     if (isPalette) revealPalette(entry);
-    else tick();
+    else {
+      tick();
+      if (entry.dockLanding && (!windowsOS || entry.shape)) {
+        entry.dockLanding = false;
+        win.webContents.send('dock-landed');
+      }
+    }
   });
   win.on('closed', () => {
+    if (dockDrag?.entry === entry) finishDockDrag(false);
     if (palette === entry) palette = undefined;
     if (windows.get(display.id) === entry) windows.delete(display.id);
   });
+  entry.displayId = display.id;
   win.loadFile(path.join(__dirname, 'index.html'), { query: { display: String(display.id), view: isPalette ? 'palette' : 'sidebar' } });
   return entry;
 }
@@ -161,8 +175,79 @@ function covers(rect, area) {
     rect[2] >= area.x + area.width - 2 && rect[3] >= area.y + area.height - 2;
 }
 
+function dockTarget() {
+  const cursor = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursor);
+  const area = display.bounds;
+  const distances = [
+    ['top', Math.abs(cursor.y - area.y) / area.height],
+    ['left', Math.abs(cursor.x - area.x) / area.width],
+    ['right', Math.abs(area.x + area.width - 1 - cursor.x) / area.width]
+  ];
+  distances.sort((a, b) => a[1] - b[1]);
+  const side = distances[0][1] < .17 ? distances[0][0] : dockDrag.settings.side;
+  return { display, side };
+}
+
+function updateDockPreview() {
+  const { display, side } = dockTarget();
+  const signature = `${display.id}:${side}`;
+  if (dockDrag.preview === signature) return;
+  dockDrag.preview = signature;
+  const bounds = boundsFor(display, { side });
+  const horizontal = side === 'top';
+  const width = horizontal ? Math.max(1, bounds.width - 32) : Math.max(1, bounds.width - 73);
+  const height = horizontal ? 94 : Math.min(490, bounds.height);
+  const x = bounds.x + (horizontal ? 16 : side === 'left' ? 37 : bounds.width - width - 37);
+  const y = bounds.y + (horizontal ? 16 : Math.round((bounds.height - height) / 2));
+  if (!dockPreview) {
+    dockPreview = new BrowserWindow({
+      x, y, width, height, show: false, frame: false, transparent: true,
+      backgroundColor: '#00000000', hasShadow: false, focusable: false, skipTaskbar: true, alwaysOnTop: true,
+      webPreferences: { sandbox: true, contextIsolation: true }
+    });
+    dockPreview.setIgnoreMouseEvents(true);
+    const preview = dockPreview;
+    preview.once('ready-to-show', () => {
+      if (preview === dockPreview && dockDrag) preview.showInactive();
+    });
+    preview.loadURL('data:text/html,' + encodeURIComponent(
+      '<body style="margin:0"><div style="box-sizing:border-box;height:100vh;border:2px solid #71ded0;border-radius:25px;background:#09999949"></div></body>'
+    )).catch(() => {});
+  } else {
+    dockPreview.setBounds({ x, y, width, height });
+    if (!dockPreview.webContents.isLoading()) dockPreview.showInactive();
+  }
+}
+
+async function finishDockDrag(commit) {
+  if (!dockDrag) return;
+  const { entry, settings } = dockDrag;
+  const target = commit ? dockTarget() : null;
+  dockDrag = undefined;
+  dockPreview?.hide();
+  if (!target) return;
+  const { display, side } = target;
+  if (display.id === entry.displayId && side === settings.side) return;
+  const next = structuredClone(state);
+  if (display.id !== entry.displayId) next.displays[entry.displayId] = { ...settings, mode: 'off' };
+  next.displays[display.id] = { ...settings, side, mode: 'fixed' };
+  await saveConfiguration(next);
+  const destination = windows.get(display.id);
+  if (destination) {
+    destination.manual = true;
+    destination.suppressed = false;
+    destination.edgePanel = false;
+    destination.win.setSkipTaskbar(false);
+    if (destination.ready && (!windowsOS || destination.shape)) destination.win.webContents.send('dock-landed');
+    else destination.dockLanding = true;
+    tick();
+  }
+}
+
 function tick() {
   if (quitting || trayOnly) return;
+  if (dockDrag) { updateDockPreview(); return; }
   const cursor = screen.getCursorScreenPoint();
   for (const display of screen.getAllDisplays()) {
     const entry = windows.get(display.id);
@@ -171,7 +256,9 @@ function tick() {
     const bounds = entry.win.getBounds();
     const area = display.bounds;
     const edge = settings.side === 'left' ? area.x : area.x + area.width - 1;
-    const nearEdge = Math.abs(cursor.x - edge) <= 8 && cursor.y >= bounds.y && cursor.y < bounds.y + bounds.height;
+    const nearEdge = settings.side === 'top'
+      ? Math.abs(cursor.y - area.y) <= 8 && cursor.x >= bounds.x && cursor.x < bounds.x + bounds.width
+      : Math.abs(cursor.x - edge) <= 8 && cursor.y >= bounds.y && cursor.y < bounds.y + bounds.height;
     const inWindow = cursor.x >= bounds.x - 13 && cursor.x <= bounds.x + bounds.width + 13 &&
       cursor.y >= bounds.y - 3 && cursor.y <= bounds.y + bounds.height + 3;
     if (nearEdge) entry.revealed = true;
@@ -536,9 +623,26 @@ function registerHandlers() {
     entry.win.setShape(regions);
     entry.shape = signature;
     if (firstShape && entry.isPalette) revealPalette(entry);
-    else if (firstShape) tick();
+    else if (firstShape) {
+      tick();
+      if (entry.dockLanding) {
+        entry.dockLanding = false;
+        entry.win.webContents.send('dock-landed');
+      }
+    }
   });
   handle('show-search', () => showLauncher(true));
+  handle('dock-drag', (entry, action) => {
+    if (entry.isPalette) return;
+    if (action === 'start' && !dockDrag) {
+      const display = screen.getAllDisplays().find(candidate => candidate.id === entry.displayId);
+      if (!display) return;
+      dockDrag = { entry, settings: displayConfig(display) };
+      updateDockPreview();
+    } else if (dockDrag?.entry === entry && (action === 'drop' || action === 'cancel')) {
+      return finishDockDrag(action === 'drop');
+    }
+  });
   handle('edge-panel', (entry, mode) => {
     if (entry.isPalette || !['fold', 'preview', 'pin'].includes(mode)) return;
     if (mode === 'preview' && !entry.edgePanel) return;

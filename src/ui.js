@@ -31,6 +31,7 @@ async function setEdgeMode(mode) {
   const handle = $(`edge-handle`);
   const control = $(`tray-minimize`);
   const left = config().side === `left`;
+  const top = config().side === `top`;
   control.replaceChildren(icon(mode === `preview` ? `push-pin` : `minus`));
   control.title = mode === `preview` ? `تثبيت فوق النوافذ` : `طي الشريط للحافة`;
   control.setAttribute(`aria-label`, control.title);
@@ -51,9 +52,9 @@ async function setEdgeMode(mode) {
     const full = { opacity: 1, translate: `0`, scale: 1, clipPath: `inset(0 round 30px)` };
     const tucked = {
       opacity: 0,
-      translate: `${left ? -30 : 30}px`,
+      translate: top ? `0 -24px` : `${left ? -30 : 30}px`,
       scale: .94,
-      clipPath: left ? `inset(35% 95% 35% 0 round 20px)` : `inset(35% 0 35% 95% round 20px)`
+      clipPath: top ? `inset(0 45% 90% round 20px)` : left ? `inset(35% 95% 35% 0 round 20px)` : `inset(35% 0 35% 95% round 20px)`
     };
     const motion = shell.animate(folded ? [full, tucked] : [tucked, full], {
       duration: folded ? 235 : 310, easing: `cubic-bezier(.22,.8,.2,1)`, fill: `forwards`
@@ -192,6 +193,7 @@ function styles() {
   root.setProperty('--gap', `${prefs.gap}px`);
   document.body.classList.toggle('compact', compact);
   document.body.classList.toggle('pebbly', prefs.theme === 'pebbly');
+  document.body.classList.toggle('dock-top', !isPalette && config().side === 'top');
   document.body.classList.toggle('left', config().side === 'left');
   document.body.classList.toggle('teal', prefs.tint === 'teal');
   document.body.classList.toggle('no-blur', !prefs.blur);
@@ -762,7 +764,7 @@ async function settings() {
     const settings = state.displays[display.id] || display.config;
     const block = el('fieldset');
     const mode = choice([['fixed', 'ثابت'], ['edge', 'يظهر عند الحافة'], ['off', 'مخفي']], settings.mode);
-    const side = choice([['right', 'يمين'], ['left', 'يسار']], settings.side);
+    const side = choice([['right', 'يمين'], ['left', 'يسار'], ['top', 'اعلى الشاشة']], settings.side);
     const compactMode = checkbox('الوضع المصغر', settings.compact);
     block.append(el('legend', '', display.name), field('الظهور', mode), field('جهة الشريط', side), compactMode.label);
     sections.display.append(block);
@@ -907,6 +909,32 @@ function reportGeometry() {
 
 function wire() {
   const shell = $('shell');
+  const grip = $(`dock-grip`);
+  let dockPointer;
+  grip.addEventListener(`pointerdown`, event => {
+    if (event.button !== 0) return;
+    dockPointer = { id: event.pointerId, x: event.screenX, y: event.screenY, started: false };
+    grip.setPointerCapture(event.pointerId);
+  });
+  grip.addEventListener(`pointermove`, event => {
+    if (!dockPointer || dockPointer.started || dockPointer.id !== event.pointerId) return;
+    if (Math.hypot(event.screenX - dockPointer.x, event.screenY - dockPointer.y) < 7) return;
+    dockPointer.started = true;
+    shell.classList.add(`dock-dragging`);
+    api.dockDrag(`start`).catch(errorMessage);
+  });
+  function endDockDrag(commit) {
+    if (!dockPointer) return;
+    const { id, started } = dockPointer;
+    dockPointer = undefined;
+    if (grip.hasPointerCapture(id)) grip.releasePointerCapture(id);
+    shell.classList.remove(`dock-dragging`);
+    if (started) api.dockDrag(commit ? `drop` : `cancel`).catch(errorMessage);
+  }
+  grip.addEventListener(`pointerup`, () => endDockDrag(true));
+  grip.addEventListener(`lostpointercapture`, () => endDockDrag(false));
+  grip.addEventListener(`pointercancel`, () => endDockDrag(false));
+  grip.addEventListener(`click`, event => { if (event.detail === 0) settings(); });
   let magnified = [];
   function resetMagnification() {
     for (const row of magnified) row.style.removeProperty('--dock-scale');
@@ -968,7 +996,7 @@ function wire() {
   handle.addEventListener(`click`, () => setEdgeMode(`preview`));
   shell.addEventListener(`pointerenter`, () => clearTimeout(edgeTimer));
   shell.addEventListener(`pointerleave`, () => {
-    if (edgeMode === `preview` && $(`sheet`).hidden && !dragged) {
+    if (edgeMode === `preview` && $(`sheet`).hidden && !dragged && !dockPointer) {
       edgeTimer = setTimeout(() => setEdgeMode(`fold`), 420);
     }
   });
@@ -999,6 +1027,7 @@ function wire() {
   });
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
+    if (dockPointer) { endDockDrag(false); return; }
     if (!$(`clock-calendar`).hidden) toggleCalendar(false);
     else if (!$('sheet').hidden) closeSheet();
     else if (!isPalette && $('search').value) { $('search').value = ''; drawEntries(); }
@@ -1022,13 +1051,14 @@ function wire() {
       if (!anchor.isConnected || !compact) return;
       const rect = anchor.getBoundingClientRect();
       const left = config().side === `left`;
-      const available = left ? innerWidth - rect.right : rect.left;
+      const horizontal = config().side === `top`;
+      const available = horizontal ? innerWidth - 16 : left ? innerWidth - rect.right : rect.left;
       if (available < 36) return;
       tip.textContent = anchor.dataset.tip;
       tip.hidden = false;
       tip.style.maxWidth = `${Math.min(180, available - 12)}px`;
-      tip.style.left = `${left ? rect.right + 8 : rect.left - tip.offsetWidth - 8}px`;
-      tip.style.top = `${Math.max(4, Math.min(innerHeight - tip.offsetHeight - 4, rect.top + (rect.height - tip.offsetHeight) / 2))}px`;
+      tip.style.left = `${horizontal ? Math.max(4, Math.min(innerWidth - tip.offsetWidth - 4, rect.left + (rect.width - tip.offsetWidth) / 2)) : left ? rect.right + 8 : rect.left - tip.offsetWidth - 8}px`;
+      tip.style.top = `${Math.max(4, Math.min(innerHeight - tip.offsetHeight - 4, horizontal ? rect.bottom + 8 : rect.top + (rect.height - tip.offsetHeight) / 2))}px`;
       reportGeometry();
       animate(tip, [{ opacity: .2, translate: left ? `-4px 0` : `4px 0` }, { opacity: 1, translate: `0 0` }]);
     }, performance.now() - lastTip < 220 ? 30 : 320);
@@ -1071,6 +1101,15 @@ api.load().then(data => {
     draw();
   });
   api.on('search-focus', searchFocus);
+  api.on(`dock-landed`, () => {
+    if (edgeMode !== `pin`) setEdgeMode(`pin`);
+    const vertical = config().side === `top`;
+    const offset = config().side === `left` ? -22 : 22;
+    animate($(`shell`), [
+      { opacity: .45, translate: vertical ? `0 -18px` : `${offset}px 0`, scale: .97 },
+      { opacity: 1, translate: `0 0`, scale: 1 }
+    ]);
+  });
   api.on(`edge-open`, () => setEdgeMode(`preview`));
   api.on(`tray-motion`, ({ x, y, closing }) => {
     trayMotion?.cancel();

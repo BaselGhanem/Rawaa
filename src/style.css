@@ -523,3 +523,41 @@ body:not(.palette) .shell { transition-property: width, height, padding, backgro
 @media (prefers-reduced-motion: no-preference) {
   body:not(.palette) .shell { transition-duration: 290ms, 270ms, 250ms, 180ms, 240ms, 240ms; }
 }
+
+#dock-grip { cursor: grab; touch-action: none; }
+.dock-dragging #dock-grip { cursor: grabbing; background: #31504f; }
+body.compact:not(.palette) .brand .head-button,
+body.compact:not(.palette) .brand .fold { width: 22px; flex-basis: 22px; }
+body.dock-top .shell,
+body.dock-top .shell.edge-preview {
+  inset: 16px 16px auto;
+  transform: none;
+  width: auto;
+  height: auto;
+  min-height: 82px;
+  max-height: calc(100% - 24px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 14px;
+  gap: 7px 12px;
+}
+body.dock-top .shell.edge-preview { top: 6px; }
+.dock-top .brand { grid-column: 1; min-height: 36px; }
+.dock-top .search-wrap { grid-column: 2; margin: 0; width: clamp(110px, 25vw, 200px); }
+.dock-top .entries { grid-column: 1 / -1; max-height: 155px; overflow: auto; }
+.dock-top #entry-list, .dock-top .group-items { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dock-top #entry-list .row { width: auto; max-width: 100%; margin: 0; min-height: 34px; }
+.dock-top #entry-list .section { flex-basis: 100%; padding-block: 4px 0; }
+.dock-top .group-items { margin: 0; padding: 0; border: 0; }
+.dock-top .footer { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; max-height: 300px; }
+.dock-top .footer .row { width: auto; min-height: 34px; margin: 0; }
+.dock-top .footer .clock { margin-inline-start: auto; }
+.dock-top .clock-calendar { flex-basis: 100%; order: -1; }
+body.dock-top .shell.sheet-open { height: min(510px, calc(100% - 22px)); }
+body.dock-top .shell.calendar-open { height: auto; }
+body.dock-top #edge-handle { inset: 0 auto auto calc(50% - 35px); width: 70px; height: 10px; border-radius: 0 0 10px 10px; }
+body.dock-top.compact .brand { flex-wrap: nowrap; }
+body.dock-top.compact .brand .mark { flex-basis: 36px; }
+body.dock-top.compact .footer .row { padding-inline: 8px; }
+body.dock-top.compact .search-wrap { width: 42px; justify-self: end; }
+body.dock-top.compact #entry-list .row { padding-inline: 8px; }

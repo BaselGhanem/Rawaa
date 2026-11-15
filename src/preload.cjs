@@ -10,13 +10,14 @@ contextBridge.exposeInMainWorld('rawaa', {
   icon: id => ipcRenderer.invoke('icon', id),
   geometry: value => ipcRenderer.invoke('geometry', value),
   showSearch: () => ipcRenderer.invoke('show-search'),
+  dockDrag: action => ipcRenderer.invoke('dock-drag', action),
   edgePanel: mode => ipcRenderer.invoke('edge-panel', mode),
   minimizeToTray: () => ipcRenderer.invoke('minimize-to-tray'),
   hide: () => ipcRenderer.invoke('hide'),
   backup: action => ipcRenderer.invoke('backup', action),
   updates: () => ipcRenderer.invoke('updates'),
   on: (event, callback) => {
-    if (['state', 'search-focus', 'edge-open', 'tray-motion', 'update-status'].includes(event)) {
+    if (['state', 'search-focus', 'edge-open', 'dock-landed', 'tray-motion', 'update-status'].includes(event)) {
       ipcRenderer.on(event, (_event, value) => callback(value));
     }
   }
