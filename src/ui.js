@@ -1164,7 +1164,7 @@ function wire() {
   }
   function queueTip(anchor) {
     if (!anchor || dragged) return;
-    const showTip = () => compact || (document.body.classList.contains(`dock-top`) && anchor.classList.contains(`foot-row`));
+    const showTip = () => compact || (document.body.classList.contains(`dock-top`) && anchor.matches(`.foot-row, #entry-list .row`));
     if (!showTip()) return;
     clearTimeout(tipTimer);
     tipTimer = setTimeout(() => {

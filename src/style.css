@@ -582,14 +582,20 @@ body.dock-top.compact .search-wrap { flex: 0 0 35px; }
   gap: 3px;
   padding-block: 6px;
 }
-.dock-top #entry-list .row {
-  width: auto;
-  max-width: 148px;
-  min-height: 36px;
+body.dock-top #entry-list .row {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  justify-content: center;
+  gap: 0;
   margin: 0;
-  padding: 5px 8px;
+  padding: 0;
+  border-radius: 13px;
 }
-body.dock-top.compact #entry-list .row { min-width: 37px; }
+body.dock-top #entry-list .row > :is(span, .tail) { display: none; }
+body.dock-top #entry-list .row:hover { background: #ffffff10; }
+body.dock-top #entry-list .row:focus-visible { background: #ffffff10; }
 body.dock-top #entry-list .section {
   display: grid;
   place-items: center;
@@ -607,7 +613,8 @@ body.dock-top #entry-list .section::after {
 .dock-top #entry-list .section:first-child:not(.target) { width: 0; }
 .dock-top #entry-list .section:first-child:not(.target)::after { visibility: hidden; }
 .dock-top .group-items { margin: 0; padding: 0; border: 0; }
-.dock-top #entry-list .target { padding-inline-start: 20px; }
+body.dock-top #entry-list .row.target { flex-basis: 52px; padding-inline-start: 12px; }
+body.dock-top #entry-list .section.target { width: 15px; }
 .dock-top #entry-list .target::before {
   inset: 6px 5px 6px auto;
   width: 2px;
