@@ -201,6 +201,9 @@ function styles() {
 
 function draw() {
   styles();
+  const name = $(`app-display-name`);
+  name.textContent = state.prefs.displayName;
+  $(`space-name`).title = state.prefs.displayName;
   $('current-space').textContent = selectSpace().name;
   drawEntries();
   clock();
@@ -830,6 +833,7 @@ async function settings() {
     if (key) selectSection(key);
   }, true);
   const fields = [
+    [`displayName`, `اسم البرنامج`, input(`text`, state.prefs.displayName, { dir: `auto`, maxLength: 40, placeholder: `رواء` })],
     [`searchView`, `واجهة البحث`, choice([['sidebar', 'داخل الشريط'], ['palette', 'لوحة في وسط الشاشة']], state.prefs.searchView)],
     ['theme', 'الثيم', choice([['classic', 'رواء الكلاسيكي'], ['pebbly', 'مستوحى من Pebbly']], state.prefs.theme)],
     ['width', 'عرض الشريط', input('range', state.prefs.width, { min: 275, max: 460 })],
@@ -887,7 +891,7 @@ async function settings() {
   updateLine.setAttribute('role', 'status');
   const systemActions = el('div', 'actions');
   systemActions.append(...actions.slice(2), ...actions.slice(0, 2));
-  sections.system.append(el('strong', '', `رواء ${version}`), updateLine, systemActions);
+  sections.system.append(el('strong', '', `${state.prefs.displayName} ${version}`), updateLine, systemActions);
   form.append(formActions('حفظ الاعدادات'));
   form.addEventListener('submit', async event => {
     event.preventDefault();

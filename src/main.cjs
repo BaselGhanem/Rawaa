@@ -95,8 +95,13 @@ function saveConfiguration(next) {
     await fsp.writeFile(file + '.tmp', JSON.stringify(next, null, 2), 'utf8');
     await fsp.rename(file + '.tmp', file);
     const keysChanged = next.prefs.toggleKey !== state.prefs.toggleKey || next.prefs.searchKey !== state.prefs.searchKey;
+    const nameChanged = next.prefs.displayName !== state.prefs.displayName;
     state = next;
     syncWindows();
+    if (nameChanged) {
+      for (const { win } of launcherEntries()) win.setTitle(state.prefs.displayName);
+      refreshTrayTitle();
+    }
     if (keysChanged) registerKeys();
     for (const { win } of launcherEntries()) if (!win.isDestroyed()) win.webContents.send('state', state);
     return state;
@@ -140,7 +145,7 @@ function makeWindow(display, settings, isPalette = false) {
     ...(isPalette ? paletteBounds(display) : boundsFor(display, settings)), show: false, frame: false, transparent: true,
     backgroundColor: '#00000000', hasShadow: false, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: !isPalette || state.prefs.searchAlwaysOnTop, title: 'رواء',
+    alwaysOnTop: !isPalette || state.prefs.searchAlwaysOnTop, title: state.prefs.displayName,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
   const entry = { win, isPalette, ready: false, revealed: false, manual: false, fullscreen: false };
@@ -148,6 +153,7 @@ function makeWindow(display, settings, isPalette = false) {
   else windows.set(display.id, entry);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   if (!windowsOS && !isPalette) win.on('blur', () => requestAutoFold(entry));
+  win.on('page-title-updated', event => event.preventDefault());
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.once('ready-to-show', () => {
     entry.ready = true;
@@ -560,6 +566,11 @@ async function offerUpdate(entry) {
   }
 }
 
+function refreshTrayTitle() {
+  const name = state.prefs.displayName;
+  tray?.setToolTip(updateInfo ? `${name} | تحديث ${updateInfo.version} متاح` : name);
+}
+
 function openUpdatePrompt() {
   const entries = launcherEntries();
   return offerUpdate(entries.find(entry => entry.win.isFocused()) || entries.find(entry => entry.win.isVisible()));
@@ -573,17 +584,17 @@ function setupUpdates() {
   autoUpdater.on('update-available', info => {
     updateInfo = info;
     status(`تحديث رواء ${info.version} متاح`);
-    tray?.setToolTip(`رواء | تحديث ${info.version} متاح`);
+    refreshTrayTitle();
     if (updatePromptOpen || notifiedVersion === info.version || !Notification.isSupported()) return;
     notifiedVersion = info.version;
-    updateNotification = new Notification({ title: `رواء • تحديث ${info.version}`, body: 'اضغط لتنزيل التحديث وتثبيته من داخل رواء' });
+    updateNotification = new Notification({ title: `${state.prefs.displayName} • تحديث ${info.version}`, body: 'اضغط لتنزيل التحديث وتثبيته من داخل رواء' });
     updateNotification.on('click', openUpdatePrompt);
     updateNotification.on('failed', (_event, error) => console.error('Rawaa update notification:', error));
     updateNotification.show();
   });
   autoUpdater.on('update-not-available', () => {
     updateInfo = undefined;
-    tray?.setToolTip('رواء | Rawaa');
+    refreshTrayTitle();
     status(`رواء على اخر اصدار • ${app.getVersion()}`);
   });
   autoUpdater.on('download-progress', progress => status(`جاري تنزيل التحديث ${Math.floor(progress.percent)}٪`));
@@ -845,7 +856,7 @@ else {
     }
     const logo = nativeImage.createFromPath(path.join(__dirname, 'rawaa.png'));
     tray = new Tray(logo.resize({ width: 24, height: 24 }));
-    tray.setToolTip('رواء | Rawaa');
+    refreshTrayTitle();
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'توسيع رواء', click: () => showLauncher() },
       { label: 'بحث سريع', click: () => showLauncher(true) },
