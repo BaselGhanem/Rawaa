@@ -855,10 +855,10 @@ async function settings() {
     }
     section.append(wrapper);
   }
-  for (const [key, label] of [['searchAlwaysOnTop', 'لوحة البحث فوق النوافذ دائما'], ['blur', 'كثافة الزجاج الافتراضية'], ['compactLabels', 'اظهار عناوين الاقسام بالمصغر'], ['hideFullscreen', 'اخفاء وقت ملء الشاشة'], ['hour12', 'الساعة بنظام 12 ساعة']]) {
+  for (const [key, label] of [['searchAlwaysOnTop', 'لوحة البحث فوق النوافذ دائما'], ['blur', 'كثافة الزجاج الافتراضية'], ['compactLabels', 'اظهار عناوين الاقسام بالمصغر'], ['hideFullscreen', 'اخفاء وقت ملء الشاشة'], ['hour12', 'الساعة بنظام 12 ساعة'], [`foldOnOutsideClick`, `الطي عند الضغط خارج الشريط`]]) {
     const control = checkbox(label, state.prefs[key]);
     controls[key] = control.item;
-    const section = key === 'hour12' ? sections.controls : key === 'hideFullscreen' ? sections.display : sections.look;
+    const section = [`hour12`, `foldOnOutsideClick`].includes(key) ? sections.controls : key === 'hideFullscreen' ? sections.display : sections.look;
     section.append(control.label);
   }
   const monitorControls = displays.map(display => {

@@ -12,6 +12,7 @@ const defaults = () => ({
     width: 330, iconSize: 20, gap: 5, opacity: 38, blur: true, tint: 'warm',
     icons: 'line', compactLabels: false, hour12: false, weekStart: 6,
     toggleKey: 'CommandOrControl+Alt+Space', searchKey: 'CommandOrControl+Alt+K',
+    foldOnOutsideClick: true,
     hideFullscreen: true
   }
 });
@@ -44,6 +45,7 @@ function normalize(input) {
     weekStart: p.weekStart === 0 ? 0 : 6,
     toggleKey: string(p.toggleKey, 80) || state.prefs.toggleKey,
     searchKey: string(p.searchKey, 80) || state.prefs.searchKey,
+    foldOnOutsideClick: p.foldOnOutsideClick !== false,
     hideFullscreen: p.hideFullscreen !== false
   };
   const unique = entries => [...new Map(entries.map(entry => [entry.id, entry])).values()];

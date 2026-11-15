@@ -395,7 +395,7 @@ function registerKeys() {
 }
 
 function requestAutoFold(entry) {
-  if (modalDialogs || shelfDragging || dockDrag || entry.isPalette || entry.edgeMode === 'fold' ||
+  if (!state.prefs.foldOnOutsideClick || modalDialogs || shelfDragging || dockDrag || entry.isPalette || entry.edgeMode === 'fold' ||
       !entry.win.isVisible()) return;
   entry.win.webContents.send('edge-autofold');
 }
