@@ -197,7 +197,7 @@ function updateDockPreview() {
   const bounds = boundsFor(display, { side });
   const horizontal = side === 'top';
   const width = horizontal ? Math.max(1, bounds.width - 32) : Math.max(1, bounds.width - 73);
-  const height = horizontal ? 94 : Math.min(490, bounds.height);
+  const height = horizontal ? 64 : Math.min(490, bounds.height);
   const x = bounds.x + (horizontal ? 16 : side === 'left' ? 37 : bounds.width - width - 37);
   const y = bounds.y + (horizontal ? 16 : Math.round((bounds.height - height) / 2));
   if (!dockPreview) {

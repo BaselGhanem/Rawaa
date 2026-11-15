@@ -326,7 +326,8 @@ function dropTarget(node, group, before) {
 
 function drawEntries() {
   const entries = $('entries');
-  const scroll = entries.scrollTop;
+  const horizontal = !isPalette && config().side === 'top';
+  const scroll = horizontal ? entries.scrollLeft : entries.scrollTop;
   const list = $('entry-list');
   list.replaceChildren();
   const q = $('search').value.trim().toLocaleLowerCase();
@@ -344,7 +345,8 @@ function drawEntries() {
     const matches = items.filter(item => `${item.name} ${item.target}`.toLocaleLowerCase().includes(q));
     list.append(...matches.map(makeItem));
     if (!matches.length) list.append(el('p', 'empty', 'ما في نتائج'));
-    entries.scrollTop = scroll;
+    if (horizontal) entries.scrollLeft = scroll;
+    else entries.scrollTop = scroll;
     return;
   }
   const section = (name, contents, group) => {
@@ -377,7 +379,8 @@ function drawEntries() {
       list.append(children);
     }
   }
-  entries.scrollTop = scroll;
+  if (horizontal) entries.scrollLeft = scroll;
+  else entries.scrollTop = scroll;
 }
 
 function selectPaletteResult(index) {
@@ -1054,10 +1057,12 @@ function wire() {
     reportGeometry();
   }
   function queueTip(anchor) {
-    if (!compact || !anchor || dragged) return;
+    if (!anchor || dragged) return;
+    const showTip = () => compact || (document.body.classList.contains(`dock-top`) && anchor.classList.contains(`foot-row`));
+    if (!showTip()) return;
     clearTimeout(tipTimer);
     tipTimer = setTimeout(() => {
-      if (!anchor.isConnected || !compact) return;
+      if (!anchor.isConnected || !showTip()) return;
       const rect = anchor.getBoundingClientRect();
       const left = config().side === `left`;
       const horizontal = config().side === `top`;
@@ -1085,7 +1090,15 @@ function wire() {
   });
   shell.addEventListener(`focusout`, dismissTip);
   shell.addEventListener(`dragstart`, dismissTip);
-  $(`entries`).addEventListener(`scroll`, dismissTip, { passive: true });
+  const entries = $(`entries`);
+  entries.addEventListener(`scroll`, dismissTip, { passive: true });
+  entries.addEventListener(`wheel`, event => {
+    if (!document.body.classList.contains(`dock-top`) || !event.deltaY || event.deltaX ||
+        entries.scrollWidth <= entries.clientWidth) return;
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? entries.clientWidth : 1;
+    entries.scrollLeft -= event.deltaY * unit;
+  }, { passive: false });
   $('shell').addEventListener('dragover', event => {
     if (event.dataTransfer.types.includes('Files')) event.preventDefault();
   });

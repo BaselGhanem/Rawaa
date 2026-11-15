@@ -528,38 +528,131 @@ body:not(.palette) .shell { transition-property: width, height, padding, backgro
 .dock-dragging #dock-grip { cursor: grabbing; background: #31504f; }
 body.compact:not(.palette) .brand .head-button,
 body.compact:not(.palette) .brand .fold { width: 22px; flex-basis: 22px; }
+/* The horizontal dock grows with its shortcuts, up to the screen width. */
 body.dock-top .shell,
 body.dock-top .shell.edge-preview {
-  inset: 16px 16px auto;
+  inset: 16px 12px auto;
+  margin-inline: auto;
   transform: none;
-  width: auto;
+  width: max-content;
+  max-width: calc(100% - 24px);
   height: auto;
-  min-height: 82px;
   max-height: calc(100% - 24px);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(0, auto) auto;
-  padding: 10px 14px;
-  gap: 7px 12px;
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  padding: 7px 10px;
+  gap: 7px;
+  border-radius: 24px;
 }
 body.dock-top .shell.edge-preview { top: 6px; }
-body.dock-top .brand { grid-column: 1; min-width: 0; min-height: 36px; }
-.dock-top .search-wrap { grid-column: 2; margin: 0; width: clamp(110px, 25vw, 200px); }
-.dock-top .entries { grid-column: 1 / -1; min-width: 0; max-height: min(155px, 35vh); overflow: hidden auto; }
-.dock-top #entry-list, .dock-top .group-items { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.dock-top #entry-list .row { width: auto; max-width: 100%; margin: 0; min-height: 34px; }
-.dock-top #entry-list .section { flex-basis: 100%; padding-block: 4px 0; }
+body.dock-top .brand {
+  flex: none;
+  min-height: 38px;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+body.dock-top .brand .mark { flex-basis: 34px; height: 34px; }
+.dock-top .mark img { width: 34px; height: 34px; }
+.dock-top .wordmark { max-width: 84px; padding-inline: 4px; }
+.dock-top .wordmark strong { font-size: 14px; }
+.dock-top .wordmark span { display: none; }
+.dock-top .search-wrap {
+  flex: 0 1 134px;
+  min-width: 35px;
+  min-height: 35px;
+  margin: 0;
+}
+.dock-top .search-icon { flex-basis: 35px; min-height: 35px; }
+body.dock-top.compact .search-wrap { flex: 0 0 35px; }
+.dock-top .entries {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: auto hidden;
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+  border-inline: 1px solid #ffffff19;
+  padding-inline: 7px;
+}
+.dock-top #entry-list, .dock-top .group-items {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: max-content;
+  gap: 3px;
+  padding-block: 6px;
+}
+.dock-top #entry-list .row {
+  width: auto;
+  max-width: 148px;
+  min-height: 36px;
+  margin: 0;
+  padding: 5px 8px;
+}
+body.dock-top.compact #entry-list .row { min-width: 37px; }
+body.dock-top #entry-list .section {
+  display: grid;
+  place-items: center;
+  width: 8px;
+  font-size: 0;
+  padding: 0;
+}
+body.dock-top #entry-list .section::after {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 15px;
+  background: #ffffff30;
+}
+.dock-top #entry-list .section:first-child:not(.target) { width: 0; }
+.dock-top #entry-list .section:first-child:not(.target)::after { visibility: hidden; }
 .dock-top .group-items { margin: 0; padding: 0; border: 0; }
-.dock-top .footer { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; max-height: 300px; }
-.dock-top .footer .row { width: auto; max-width: 100%; min-height: 34px; margin: 0; }
-.dock-top .footer .clock { margin-inline-start: auto; }
-.dock-top .clock-calendar { flex-basis: 100%; order: -1; }
-body.dock-top .shell.sheet-open { height: min(510px, calc(100% - 22px)); }
-body.dock-top .shell.calendar-open { height: auto; }
-body.dock-top .calendar-open .footer { max-height: min(300px, 55vh); }
-body.dock-top #edge-handle { inset: 0 auto auto calc(50% - 35px); width: 70px; height: 10px; border-radius: 0 0 10px 10px; }
-body.dock-top.compact .brand { flex-wrap: nowrap; }
-body.dock-top.compact .brand .mark { flex-basis: 36px; }
-body.dock-top.compact .footer .row { padding-inline: 8px; }
-body.dock-top.compact .search-wrap { width: 42px; justify-self: end; }
-body.dock-top.compact #entry-list .row { padding-inline: 8px; }
+.dock-top #entry-list .target { padding-inline-start: 20px; }
+.dock-top #entry-list .target::before {
+  inset: 6px 5px 6px auto;
+  width: 2px;
+  height: auto;
+}
+.dock-top .footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  padding: 0;
+  overflow: visible;
+}
+body.dock-top .footer .row {
+  width: auto;
+  min-height: 35px;
+  padding: 5px 7px;
+  margin: 0;
+}
+.dock-top .foot-row span, .dock-top #date-label, .dock-top #date .tail { display: none; }
+body.dock-top .clock #time { font-size: 17px; }
+body.dock-top .shell.sheet-open {
+  width: min(580px, calc(100% - 24px));
+  height: min(510px, calc(100% - 24px));
+}
+body.dock-top .shell.calendar-open {
+  min-width: min(326px, calc(100% - 24px));
+  padding-bottom: min(274px, calc(100vh - 75px));
+}
+.dock-top .clock-calendar {
+  position: absolute;
+  inset: 57px 9px 8px;
+  max-height: none;
+  margin: 0;
+}
+body.dock-top #edge-handle {
+  inset: 0 auto auto calc(50% - 35px);
+  width: 70px;
+  height: 10px;
+  border-radius: 0 0 10px 10px;
+}
+@media (max-width: 480px) {
+  .dock-top .wordmark { display: none; }
+  body.dock-top .shell { gap: 3px; padding-inline: 6px; }
+  .dock-top .search-wrap { flex-basis: 75px; }
+  .dock-top .entries { padding-inline: 3px; }
+}
