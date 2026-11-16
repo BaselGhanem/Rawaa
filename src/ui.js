@@ -33,6 +33,11 @@ async function setEdgeMode(mode) {
   const control = $(`spaces`);
   const left = config().side === `left`;
   const top = config().side === `top`;
+  const minimize = $(`edge-minimize`);
+  const preview = mode === `preview`;
+  minimize.replaceChildren(icon(preview ? `push-pin` : `minus`));
+  minimize.title = preview ? `تثبيت الشريط مفتوح` : `تصغير للحافة`;
+  minimize.setAttribute(`aria-label`, minimize.title);
   const folded = mode === `fold`;
   handle.hidden = !folded;
   handle.setAttribute(`aria-expanded`, String(!folded));
@@ -1117,14 +1122,17 @@ function wire() {
   handle.addEventListener(`pointerleave`, () => {
     if (edgeMode === `fold`) clearTimeout(edgeTimer);
   });
-  handle.addEventListener(`click`, () => setEdgeMode(`preview`));
+  handle.addEventListener(`click`, () => setEdgeMode(`pin`));
   shell.addEventListener(`pointerenter`, () => clearTimeout(edgeTimer));
   shell.addEventListener(`pointerleave`, () => {
     if (edgeMode === `preview` && $(`sheet`).hidden && !dragged && !dockPointer) {
       edgeTimer = setTimeout(() => setEdgeMode(`fold`), 420);
     }
   });
-  $(`edge-minimize`).addEventListener(`click`, () => setEdgeMode(`fold`));
+  $(`edge-minimize`).addEventListener(`click`, () => setEdgeMode(edgeMode === `preview` ? `pin` : `fold`));
+  $(`update-available`).addEventListener(`click`, async () => {
+    try { toast(await api.updates()); } catch (error) { errorMessage(error); }
+  });
   $('space-name').addEventListener('click', spaces);
   $(`date`).addEventListener(`click`, () => toggleCalendar());
   $('add').addEventListener('click', addMenu);
@@ -1220,6 +1228,11 @@ function wire() {
   });
 }
 
+function showUpdateAvailability(updateVersion) {
+  $(`update-available`).hidden = !updateVersion;
+  $(`edge-handle`).classList.toggle(`has-update`, Boolean(updateVersion));
+}
+
 api.load().then(data => {
   ({ state, displays, version, updateStatus } = data);
   compact = !isPalette && config().compact;
@@ -1227,6 +1240,8 @@ api.load().then(data => {
   api.on(`shelf-error`, errorMessage);
   wire();
   updateShelf(data.shelf);
+  showUpdateAvailability(data.updateVersion);
+  api.on(`update-version`, showUpdateAvailability);
   draw();
   setInterval(clock, 1000);
   api.on('state', next => {
@@ -1245,7 +1260,7 @@ api.load().then(data => {
       { opacity: 1, translate: `0 0`, scale: 1 }
     ]);
   });
-  api.on(`edge-open`, () => setEdgeMode(`preview`));
+  api.on(`edge-open`, mode => setEdgeMode(mode === `pin` ? `pin` : `preview`));
   api.on(`edge-autofold`, () => {
     if (!compact && !dragged) setEdgeMode(`fold`);
   });

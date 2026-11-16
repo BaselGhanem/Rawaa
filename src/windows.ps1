@@ -147,7 +147,7 @@ if ($Action -eq 'monitor') {
         $class = [Text.StringBuilder]::new(256)
         [void][Native]::GetClassName($h, $class, 256)
         $skip = @('Progman','WorkerW','Shell_TrayWnd','Shell_SecondaryTrayWnd') -contains $class.ToString()
-        if (!$skip -and [Native]::GetWindowRect($h,[ref]$rect)) {
+        if (!$skip -and ![Native]::IsZoomed($h) -and [Native]::GetWindowRect($h,[ref]$rect)) {
             $current = '{0} {1} {2} {3}' -f $rect.Left,$rect.Top,$rect.Right,$rect.Bottom
         } else { $current = 'none' }
         if ($current -ne $previous) {

@@ -738,3 +738,6 @@ body.dock-top #shelf-button .tail {
 }
 #edge-minimize:hover { background: #ffffff12; color: #f1fffd; }
 body.compact:not(.dock-top) #edge-minimize { position: absolute; inset: 0 auto auto 0; }
+
+#update-available { color: var(--accent); }
+#edge-handle.has-update { background: linear-gradient(180deg, #bde8dc, #099999); }

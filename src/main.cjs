@@ -327,7 +327,7 @@ function tick() {
   }
 }
 
-function showLauncher(search = false) {
+function showLauncher(search = false, restoreEdge = false) {
   const restoring = trayOnly;
   clearTimeout(trayTransition);
   if (restoring) {
@@ -345,7 +345,7 @@ function showLauncher(search = false) {
   if (entry.edgePanel) {
     entry.overrideFullscreen = true;
     entry.win.show();
-    entry.win.webContents.send('edge-open');
+    entry.win.webContents.send('edge-open', restoreEdge ? 'pin' : 'preview');
     if (search) entry.win.webContents.send('search-focus');
     return;
   }
@@ -576,6 +576,12 @@ function openUpdatePrompt() {
   return offerUpdate(entries.find(entry => entry.win.isFocused()) || entries.find(entry => entry.win.isVisible()));
 }
 
+function broadcastUpdateAvailability() {
+  for (const { win } of launcherEntries()) {
+    if (!win.isDestroyed()) win.webContents.send('update-version', updateInfo?.version || '');
+  }
+}
+
 function setupUpdates() {
   if (!windowsOS || !app.isPackaged) return;
   autoUpdater.autoDownload = false;
@@ -585,16 +591,27 @@ function setupUpdates() {
     updateInfo = info;
     status(`تحديث رواء ${info.version} متاح`);
     refreshTrayTitle();
-    if (updatePromptOpen || notifiedVersion === info.version || !Notification.isSupported()) return;
+    broadcastUpdateAvailability();
+    if (updatePromptOpen || notifiedVersion === info.version) return;
     notifiedVersion = info.version;
-    updateNotification = new Notification({ title: `${state.prefs.displayName} • تحديث ${info.version}`, body: 'اضغط لتنزيل التحديث وتثبيته من داخل رواء' });
+    const details = { title: `${state.prefs.displayName} • تحديث ${info.version}`, body: 'اضغط لفتح خيارات التحديث' };
+    const fallback = () => tray?.displayBalloon({ title: details.title, content: details.body });
+    if (!Notification.isSupported()) {
+      fallback();
+      return;
+    }
+    updateNotification = new Notification(details);
     updateNotification.on('click', openUpdatePrompt);
-    updateNotification.on('failed', (_event, error) => console.error('Rawaa update notification:', error));
+    updateNotification.once('failed', error => {
+      console.error('Rawaa update notification:', error);
+      fallback();
+    });
     updateNotification.show();
   });
   autoUpdater.on('update-not-available', () => {
     updateInfo = undefined;
     refreshTrayTitle();
+    broadcastUpdateAvailability();
     status(`رواء على اخر اصدار • ${app.getVersion()}`);
   });
   autoUpdater.on('download-progress', progress => status(`جاري تنزيل التحديث ${Math.floor(progress.percent)}٪`));
@@ -681,7 +698,7 @@ function registerHandlers() {
     if (!entry || event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid sender');
     return fn(entry, value);
   });
-  handle('load', () => ({ state, displays: displaysInfo(), version: app.getVersion(), updateStatus, shelf: shelfItems() }));
+  handle('load', () => ({ state, displays: displaysInfo(), version: app.getVersion(), updateStatus, updateVersion: updateInfo?.version || '', shelf: shelfItems() }));
   handle('shelf-add', (_entry, paths) => addShelfFiles(paths));
   handle('shelf-remove', (_entry, id) => {
     shelf.delete(id);
@@ -774,7 +791,8 @@ function registerHandlers() {
     entry.manual = mode === 'pin';
     entry.suppressed = false;
     entry.win.setSkipTaskbar(mode === 'fold');
-    if (mode === 'pin') entry.win.setAlwaysOnTop(true);
+    entry.win.setAlwaysOnTop(true);
+    if (mode === 'pin') entry.overrideFullscreen = true;
   });
   handle('minimize-to-tray', entry => minimizeToTray(entry));
   handle('hide', entry => hideLauncher(entry));
@@ -858,7 +876,7 @@ else {
     tray = new Tray(logo.resize({ width: 24, height: 24 }));
     refreshTrayTitle();
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'توسيع رواء', click: () => showLauncher() },
+      { label: 'توسيع رواء', click: () => showLauncher(false, true) },
       { label: 'بحث سريع', click: () => showLauncher(true) },
       { label: 'تحديثات رواء', click: async () => {
         if (!windowsOS || !app.isPackaged) return;
@@ -869,6 +887,7 @@ else {
       { type: 'separator' },
       { label: 'اخفاء كلي (خروج)', click: () => app.quit() }
     ]));
+    tray.on('balloon-click', openUpdatePrompt);
     tray.on('click', () => { if (trayOnly) showLauncher(); });
     registerHandlers();
     registerKeys();
