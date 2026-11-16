@@ -741,3 +741,61 @@ body.compact:not(.dock-top) #edge-minimize { position: absolute; inset: 0 auto a
 
 #update-available { color: var(--accent); }
 #edge-handle.has-update { background: linear-gradient(180deg, #bde8dc, #099999); }
+
+button, input, select, .section, .sheet-head, .wordmark { line-height: 1.5; }
+.search-wrap input { min-width: 0; padding-block: 8px 10px; }
+body:not(.dock-top):not(.compact):not(.palette) #entry-list .row > span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+body:not(.dock-top) .clock #date-label { white-space: normal; line-height: 1.6; }
+#spaces.is-pinned::after {
+  content: '';
+  position: absolute;
+  inset: auto 2px 2px auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #91ddd3;
+  box-shadow: 0 0 0 2px #1b2328;
+}
+body.settings-window .shell,
+body.settings-window .shell.sheet-open {
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  transform: none;
+  border-radius: 0;
+  transition: none;
+}
+body.settings-window .settings-sheet {
+  padding: 20px 22px 14px;
+  border-radius: 0;
+  background: #1b2328;
+  --accent: #91ddd3;
+}
+body.settings-window .sheet-head { -webkit-app-region: drag; }
+body.settings-window .sheet-head button { -webkit-app-region: no-drag; }
+body.settings-window .settings-tab { font-size: 12px; }
+.settings-card[data-section=system] { background: none; padding: 0; }
+.system-group {
+  display: grid;
+  gap: 10px;
+  padding: 15px;
+  border-radius: 15px;
+  background: #ffffff0a;
+}
+.system-identity { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.system-identity strong { overflow-wrap: anywhere; }
+.system-version {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 20px;
+  color: #bcece5;
+  background: #294541;
+  font-size: 11px;
+}
+.system-group #update-status { color: #b8c9cc; line-height: 1.6; }
+.system-group .actions { margin: 0; }

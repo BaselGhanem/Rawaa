@@ -5,7 +5,10 @@ const $ = id => document.getElementById(id);
 const kinds = { app: 'تطبيق او اختصار', file: 'ملف', folder: 'مجلد', url: 'رابط', bundle: 'زر تشغيل مجموعة' };
 const kindIcons = { app: 'app-window', file: 'file', folder: 'folder', url: 'link', bundle: 'rocket-launch' };
 const iconOptions = ['app-window', 'file', 'folder', 'link', 'rocket-launch', 'chart-bar', 'table', 'game-controller', 'globe', 'book-open', 'briefcase', 'graduation-cap', 'star', 'image', 'music-note', 'envelope', 'code', 'video-camera'];
-const isPalette = new URLSearchParams(location.search).get(`view`) === `palette`;
+const view = new URLSearchParams(location.search).get(`view`);
+const isPalette = view === `palette`;
+const isSettings = view === `settings`;
+document.body.classList.toggle(`settings-window`, isSettings);
 document.body.classList.toggle(`palette`, isPalette);
 const displayId = new URLSearchParams(location.search).get('display');
 const uid = () => crypto.randomUUID();
@@ -21,7 +24,9 @@ let trayMotion;
 let shelf = [];
 let edgeMotion;
 let edgeTimer;
-let edgeMode = `pin`;
+let edgeMode = `normal`;
+let settingsOpen = false;
+let preview;
 
 async function setEdgeMode(mode) {
   if (isPalette || mode === edgeMode) return;
@@ -36,6 +41,8 @@ async function setEdgeMode(mode) {
   const minimize = $(`edge-minimize`);
   const preview = mode === `preview`;
   minimize.replaceChildren(icon(preview ? `push-pin` : `minus`));
+  control.classList.toggle(`is-pinned`, mode === `pin`);
+  control.title = mode === `pin` ? `مثبت فوق النوافذ` : `تحكم برواء · اسحب لنقله`;
   minimize.title = preview ? `تثبيت الشريط مفتوح` : `تصغير للحافة`;
   minimize.setAttribute(`aria-label`, minimize.title);
   const folded = mode === `fold`;
@@ -46,7 +53,7 @@ async function setEdgeMode(mode) {
   const tip = $(`tip`);
   tip.hidden = true;
   const updateWindow = api.edgePanel(mode);
-  if (matchMedia(`(prefers-reduced-motion: reduce)`).matches || mode === `pin`) {
+  if (matchMedia(`(prefers-reduced-motion: reduce)`).matches || mode === `pin` || mode === `normal`) {
     shell.classList.toggle(`edge-folded`, folded);
     if (mode === `pin`) animate(control, [
       { scale: .84, rotate: `-12deg` }, { scale: 1.12, rotate: `5deg`, offset: .55 }, { scale: 1, rotate: `0deg` }
@@ -184,17 +191,17 @@ async function change(mutate) {
 
 function config() {
   const display = displays.find(entry => entry.id === displayId) || displays[0];
-  return state.displays[display.id] || display.config;
+  return preview?.display || state.displays[display.id] || display.config;
 }
 
 function styles() {
-  const { prefs } = state;
+  const prefs = preview?.prefs || state.prefs;
   const root = document.documentElement.style;
   root.setProperty('--width', `${prefs.width}px`);
   root.setProperty('--alpha', `${prefs.opacity / 100}`);
   root.setProperty('--icon', `${prefs.iconSize}px`);
   root.setProperty('--gap', `${prefs.gap}px`);
-  document.body.classList.toggle('compact', compact);
+  document.body.classList.toggle('compact', preview?.display.compact ?? compact);
   document.body.classList.toggle('pebbly', prefs.theme === 'pebbly');
   document.body.classList.toggle('dock-top', !isPalette && config().side === 'top');
   document.body.classList.toggle('left', config().side === 'left');
@@ -206,16 +213,17 @@ function styles() {
 
 function draw() {
   styles();
+  $(`search`).placeholder = `بحث`;
   const name = $(`app-display-name`);
-  name.textContent = state.prefs.displayName;
-  $(`space-name`).title = state.prefs.displayName;
+  name.textContent = (preview?.prefs || state.prefs).displayName;
+  $(`space-name`).title = name.textContent;
   $('current-space').textContent = selectSpace().name;
   drawEntries();
   clock();
 }
 
 function nativeIcon(item, node) {
-  if ((!isPalette && state.prefs.icons !== 'native' && item.kind !== 'app') || item.icon || !['app', 'file', 'folder'].includes(item.kind)) return;
+  if ((!isPalette && (preview?.prefs || state.prefs).icons !== 'native' && item.kind !== 'app') || item.icon || !['app', 'file', 'folder'].includes(item.kind)) return;
   const key = `${item.id}|${item.target}`;
   if (!nativeIcons.has(key)) {
     if (nativeIcons.size > 250) nativeIcons.clear();
@@ -410,7 +418,7 @@ function showSheet(title, content) {
   $('tip').hidden = true;
   const sheet = $('sheet');
   const header = el('div', 'sheet-head');
-  const close = button('', closeSheet, 'plain', 'x');
+  const close = button('', isSettings ? () => api.closeSettings().catch(errorMessage) : closeSheet, 'plain', 'x');
   close.setAttribute('aria-label', 'اغلاق');
   header.append(el('strong', '', title), close);
   const body = el('div', 'sheet-content');
@@ -749,13 +757,14 @@ function dockControls() {
   if (!$(`clock-calendar`).hidden) toggleCalendar(false);
   const wasCompact = compact;
   const box = el(`div`, `dock-controls`);
-  const pin = edgeMode === `preview`;
+  const pinned = edgeMode === `pin`;
   box.append(
     row(wasCompact ? `توسيع الشريط` : `تصغير الشريط`, wasCompact ? `arrows-out` : `arrows-in`, () => setCompact(!wasCompact)),
-    row(pin ? `تثبيت فوق النوافذ` : `طي للحافة`, pin ? `push-pin` : `minus`, () => {
+    row(pinned ? `الغاء التثبيت` : `تثبيت فوق النوافذ`, `push-pin`, () => {
       closeSheet();
-      setEdgeMode(pin ? `pin` : `fold`);
+      setEdgeMode(pinned ? `normal` : `pin`);
     }),
+    row(`طي للحافة`, `minus`, () => { closeSheet(); setEdgeMode(`fold`); }),
     row(`مساحات العمل`, `squares-four`, () => { closeSheet(); spaces(); }),
     row(`رف الملفات`, `tray`, openShelf)
   );
@@ -883,40 +892,60 @@ async function settings() {
   const actions = ['export', 'import'].map((action, index) => button(index ? 'استيراد الاعدادات' : 'تصدير الاعدادات', async () => {
     try {
       if (await api.backup(action)) {
-        if (action === 'import') { compact = !isPalette && config().compact; draw(); closeSheet(); }
+        if (action === 'import') {
+          if (isSettings) await settings();
+          else { compact = !isPalette && config().compact; draw(); closeSheet(); }
+        }
         toast(index ? 'تم الاستيراد' : 'تم التصدير');
       }
     } catch (error) { errorMessage(error); }
   }));
-  actions.push(button('التحديثات', async () => {
+  const updateButton = button(`التحقق من التحديثات`, async () => {
     try { toast(await api.updates()); } catch (error) { errorMessage(error); }
-  }), button(isPalette ? 'اخفاء لوحة البحث' : 'اخفاء الشريط', () => { closeSheet(); if (isPalette) api.hide(); else setEdgeMode(`fold`); }));
+  }, `secondary`, `arrows-clockwise`);
   const updateLine = el('small', '', updateStatus || `Rawaa ${version}`);
   updateLine.id = 'update-status';
   updateLine.setAttribute('role', 'status');
-  const systemActions = el('div', 'actions');
-  systemActions.append(...actions.slice(2), ...actions.slice(0, 2));
-  sections.system.append(el('strong', '', `${state.prefs.displayName} ${version}`), updateLine, systemActions);
+  const releaseCard = el(`div`, `system-group`);
+  const versionTag = el(`span`, `system-version`, `v${version}`);
+  versionTag.dir = `ltr`;
+  const identity = el(`div`, `system-identity`);
+  identity.append(el(`strong`, ``, state.prefs.displayName), versionTag);
+  releaseCard.append(identity, updateLine, updateButton);
+  const backupCard = el(`div`, `system-group`);
+  const backupActions = el(`div`, `actions`);
+  backupActions.append(...actions);
+  backupCard.append(el(`strong`, ``, `نسخة احتياطية`), backupActions);
+  sections.system.append(releaseCard, backupCard);
   form.append(formActions('حفظ الاعدادات'));
+  function applySettings(next) {
+    for (const [key, node] of Object.entries(controls)) {
+      if (node.type === 'checkbox') next.prefs[key] = node.checked;
+      else if (node.type === 'range' || key === 'weekStart') next.prefs[key] = Number(node.value);
+      else next.prefs[key] = node.value.trim();
+    }
+    for (const display of monitorControls) {
+      next.displays[display.id] = { mode: display.mode.value, side: display.side.value, compact: display.compact.checked };
+    }
+  }
+  if (isSettings) {
+    form.addEventListener(`input`, () => {
+      const draft = structuredClone(state);
+      applySettings(draft);
+      api.settingsPreview(draft).catch(errorMessage);
+    });
+  }
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const showPalette = state.prefs.searchView !== `palette` && controls.searchView.value === `palette`;
     ignoreSettings = true;
-    const success = await change(next => {
-      for (const [key, node] of Object.entries(controls)) {
-        if (node.type === 'checkbox') next.prefs[key] = node.checked;
-        else if (node.type === 'range' || key === 'weekStart') next.prefs[key] = Number(node.value);
-        else next.prefs[key] = node.value.trim();
-      }
-      for (const display of monitorControls) {
-        next.displays[display.id] = { mode: display.mode.value, side: display.side.value, compact: display.compact.checked };
-      }
-    });
+    const success = await change(applySettings);
     ignoreSettings = false;
     if (success) {
       compact = !isPalette && config().compact;
       draw();
-      closeSheet();
+      if (isSettings) toast(`تم حفظ الاعدادات`);
+      else closeSheet();
       if (showPalette) api.showSearch().catch(errorMessage);
     }
   });
@@ -926,14 +955,15 @@ async function settings() {
 
 function clock() {
   const now = new Date();
-  const time = new Intl.DateTimeFormat('ar-JO', { hour: '2-digit', minute: '2-digit', hour12: state.prefs.hour12 }).format(now);
+  const prefs = preview?.prefs || state.prefs;
+  const time = new Intl.DateTimeFormat('ar-JO', { hour: '2-digit', minute: '2-digit', hour12: prefs.hour12 }).format(now);
   const parts = new Intl.DateTimeFormat(`ar-JO-u-nu-latn`, {
-    hour: `2-digit`, minute: `2-digit`, ...(state.prefs.hour12 ? { hour12: true } : { hourCycle: `h23` })
+    hour: `2-digit`, minute: `2-digit`, ...(prefs.hour12 ? { hour12: true } : { hourCycle: `h23` })
   }).formatToParts(now);
   const reading = parts.filter(part => [`hour`, `minute`].includes(part.type)).map(part => part.value).join(`:`);
   $(`time`).textContent = reading;
   $(`clock-period`).textContent = parts.find(part => part.type === `dayPeriod`)?.value || ``;
-  $(`clock-period`).hidden = !state.prefs.hour12;
+  $(`clock-period`).hidden = !prefs.hour12;
   $(`date`).setAttribute(`aria-label`, `${time}، فتح التقويم`);
   $('date-label').textContent = new Intl.DateTimeFormat('ar-JO', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
   $('date').dataset.tip = `${time} · التقويم`;
@@ -977,7 +1007,7 @@ function calendar(month = new Date()) {
   next.setAttribute('aria-label', 'الشهر التالي');
   header.append(prev, el('strong', '', new Intl.DateTimeFormat('ar-JO', { month: 'long', year: 'numeric' }).format(month)), next);
   const days = el('div', 'days');
-  const start = state.prefs.weekStart;
+  const start = (preview?.prefs || state.prefs).weekStart;
   const labels = ['احد', 'اثن', 'ثلا', 'ارب', 'خمي', 'جمع', 'سبت'];
   for (let offset = 0; offset < 7; offset++) days.append(el('span', 'weekday', labels[(start + offset) % 7]));
   const offset = (new Date(year, index, 1).getDay() - start + 7) % 7;
@@ -1125,7 +1155,7 @@ function wire() {
   handle.addEventListener(`click`, () => setEdgeMode(`pin`));
   shell.addEventListener(`pointerenter`, () => clearTimeout(edgeTimer));
   shell.addEventListener(`pointerleave`, () => {
-    if (edgeMode === `preview` && $(`sheet`).hidden && !dragged && !dockPointer) {
+    if (edgeMode === `preview` && !settingsOpen && $(`sheet`).hidden && !dragged && !dockPointer) {
       edgeTimer = setTimeout(() => setEdgeMode(`fold`), 420);
     }
   });
@@ -1136,7 +1166,7 @@ function wire() {
   $('space-name').addEventListener('click', spaces);
   $(`date`).addEventListener(`click`, () => toggleCalendar());
   $('add').addEventListener('click', addMenu);
-  $('settings').addEventListener('click', settings);
+  $('settings').addEventListener('click', () => api.openSettings().catch(errorMessage));
   $(`search-icon`).addEventListener(`click`, () => {
     if (!isPalette && state.prefs.searchView === `palette`) api.showSearch().catch(errorMessage);
     else searchFocus();
@@ -1157,12 +1187,13 @@ function wire() {
   });
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
+    if (isSettings) { api.closeSettings().catch(errorMessage); return; }
     if (dockPointer) { endDockDrag(false); return; }
     if (!$(`clock-calendar`).hidden) toggleCalendar(false);
     else if (!$('sheet').hidden) closeSheet();
     else if (!isPalette && $('search').value) { $('search').value = ''; drawEntries(); }
     else if (edgeMode === `preview`) setEdgeMode(`fold`);
-    else if (edgeMode === `pin`) api.hide();
+    else if (edgeMode !== `fold`) api.hide();
   });
   const tip = $(`tip`);
   let tipTimer;
@@ -1243,7 +1274,17 @@ api.load().then(data => {
   showUpdateAvailability(data.updateVersion);
   api.on(`update-version`, showUpdateAvailability);
   draw();
-  setInterval(clock, 1000);
+  if (isSettings) settings().catch(errorMessage);
+  else setInterval(clock, 1000);
+  api.on(`settings-preview`, draft => {
+    preview = draft;
+    draw();
+    if (!$(`clock-calendar`).hidden) calendar();
+  });
+  api.on(`settings-visibility`, open => {
+    settingsOpen = open;
+    if (open) clearTimeout(edgeTimer);
+  });
   api.on('state', next => {
     const before = config().compact;
     state = next;
@@ -1252,7 +1293,7 @@ api.load().then(data => {
   });
   api.on('search-focus', searchFocus);
   api.on(`dock-landed`, () => {
-    if (edgeMode !== `pin`) setEdgeMode(`pin`);
+    if (edgeMode !== `normal`) setEdgeMode(`normal`);
     const vertical = config().side === `top`;
     const offset = config().side === `left` ? -22 : 22;
     animate($(`shell`), [
@@ -1262,7 +1303,7 @@ api.load().then(data => {
   });
   api.on(`edge-open`, mode => setEdgeMode(mode === `pin` ? `pin` : `preview`));
   api.on(`edge-autofold`, () => {
-    if (!compact && !dragged) setEdgeMode(`fold`);
+    if (edgeMode !== `pin` && !settingsOpen && !compact && !dragged) setEdgeMode(`fold`);
   });
   api.on(`tray-motion`, ({ x, y, closing }) => {
     trayMotion?.cancel();

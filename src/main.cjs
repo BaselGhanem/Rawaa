@@ -24,9 +24,11 @@ let dockDrag;
 let dockPreview;
 let trayTransition;
 let palette;
+let settingsEntry;
+let settingsPreview;
 
 function launcherEntries() {
-  return palette ? [...windows.values(), palette] : [...windows.values()];
+  return [...windows.values(), ...[palette, settingsEntry].filter(Boolean)];
 }
 let monitor;
 let interval;
@@ -98,8 +100,9 @@ function saveConfiguration(next) {
     const nameChanged = next.prefs.displayName !== state.prefs.displayName;
     state = next;
     syncWindows();
+    if (settingsPreview) previewSettings(null);
     if (nameChanged) {
-      for (const { win } of launcherEntries()) win.setTitle(state.prefs.displayName);
+      for (const { win, isSettings } of launcherEntries()) if (!isSettings) win.setTitle(state.prefs.displayName);
       refreshTrayTitle();
     }
     if (keysChanged) registerKeys();
@@ -116,13 +119,13 @@ function displayConfig(display) {
   };
 }
 
-function boundsFor(display, settings) {
+function boundsFor(display, settings, prefs = state.prefs) {
   const area = display.workArea;
   if (settings.side === 'top') {
     const width = Math.min(area.width, 880);
     return { x: area.x + Math.round((area.width - width) / 2), y: area.y, width, height: Math.min(area.height, 560) };
   }
-  const width = Math.min(area.width, state.prefs.width + 110);
+  const width = Math.min(area.width, prefs.width + 110);
   const height = Math.max(180, Math.min(760, area.height - 30));
   return {
     x: settings.side === 'left' ? area.x : area.x + area.width - width,
@@ -174,6 +177,59 @@ function makeWindow(display, settings, isPalette = false) {
   entry.displayId = display.id;
   win.loadFile(path.join(__dirname, 'index.html'), { query: { display: String(display.id), view: isPalette ? 'palette' : 'sidebar' } });
   return entry;
+}
+
+function previewSettings(draft) {
+  settingsPreview = draft;
+  for (const display of screen.getAllDisplays()) {
+    const entry = windows.get(display.id);
+    if (!entry) continue;
+    const current = displayConfig(display);
+    const appearance = draft?.displays[display.id] || current;
+    const bounds = boundsFor(display, appearance, draft?.prefs);
+    const currentBounds = entry.win.getBounds();
+    if (Object.keys(bounds).some(key => bounds[key] !== currentBounds[key])) entry.win.setBounds(bounds);
+    if (settingsEntry?.displayId === display.id && appearance.side !== settingsEntry.side) {
+      settingsEntry.side = appearance.side;
+      settingsEntry.win.setBounds(settingsBounds(display, appearance, draft?.prefs || state.prefs));
+    }
+    entry.win.webContents.send('settings-preview', draft ? { prefs: draft.prefs, display: appearance } : null);
+  }
+}
+
+function settingsBounds(display, dock, prefs) {
+  const area = display.workArea;
+  const width = Math.min(484, area.width);
+  const height = Math.min(650, area.height);
+  const x = dock.side === 'left' ? Math.min(area.x + prefs.width + 65, area.x + area.width - width)
+    : Math.max(area.x, area.x + area.width - width - (dock.side === 'right' ? prefs.width + 65 : 0));
+  const y = dock.side === 'top' ? Math.min(area.y + 96, area.y + area.height - height)
+    : area.y + Math.round((area.height - height) / 2);
+  return { x, y, width, height };
+}
+
+function openSettings(source) {
+  if (settingsEntry) { settingsEntry.win.show(); return; }
+  const display = screen.getDisplayMatching(source.win.getBounds());
+  const win = new BrowserWindow({
+    ...settingsBounds(display, displayConfig(display), state.prefs),
+    show: false, frame: false, backgroundColor: '#1b2328',
+    title: 'الاعدادات', autoHideMenuBar: true, alwaysOnTop: true, resizable: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false }
+  });
+  settingsEntry = { win, isSettings: true, source, displayId: display.id, side: displayConfig(display).side };
+  for (const entry of windows.values()) entry.win.webContents.send('settings-visibility', true);
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', event => event.preventDefault());
+  win.on('page-title-updated', event => event.preventDefault());
+  win.once('ready-to-show', () => win.show());
+  win.on('closed', () => {
+    settingsEntry = undefined;
+    for (const entry of windows.values()) entry.win.webContents.send('settings-visibility', false);
+    if (settingsPreview) previewSettings(null);
+    if (source.edgeMode === 'preview' && !source.win.isDestroyed()) source.win.webContents.send('edge-autofold');
+  });
+  win.loadFile(path.join(__dirname, 'index.html'), { query: { display: String(display.id), view: 'settings' } });
 }
 
 function revealPalette(entry) {
@@ -284,7 +340,8 @@ async function finishDockDrag(commit) {
     destination.manual = true;
     destination.suppressed = false;
     destination.edgePanel = false;
-    destination.edgeMode = 'pin';
+    destination.edgeMode = 'normal';
+    destination.pinned = false;
     destination.win.setSkipTaskbar(false);
     if (destination.ready && (!windowsOS || destination.shape)) destination.win.webContents.send('dock-landed');
     else destination.dockLanding = true;
@@ -312,8 +369,12 @@ function tick() {
     if (!inWindow && !entry.win.isFocused()) entry.revealed = false;
     const physical = windowsOS ? screen.dipToScreenRect(entry.win, display.bounds) : display.bounds;
     const fullscreen = state.prefs.hideFullscreen && covers(foreground, physical);
-    if (fullscreen && !entry.fullscreen) entry.overrideFullscreen = false;
+    if (fullscreen && !entry.fullscreen && !entry.pinned) entry.overrideFullscreen = false;
     entry.fullscreen = fullscreen;
+    if (settingsEntry?.source === entry && entry.edgeMode !== 'fold') {
+      if (!entry.win.isVisible()) entry.win.showInactive();
+      continue;
+    }
     if (entry.edgePanel) {
       if (fullscreen && !entry.overrideFullscreen) entry.win.hide();
       else if (!entry.win.isVisible()) entry.win.showInactive();
@@ -374,7 +435,7 @@ function minimizeToTray(entry) {
   if (trayOnly) return;
   trayOnly = true;
   for (const candidate of launcherEntries()) {
-    if (candidate !== entry) hideLauncher(candidate);
+    if (candidate !== entry && !candidate.isSettings) hideLauncher(candidate);
   }
   if (!entry?.win.isVisible()) return;
   sendTrayMotion(entry, true);
@@ -401,7 +462,7 @@ function registerKeys() {
 }
 
 function requestAutoFold(entry) {
-  if (!state.prefs.foldOnOutsideClick || modalDialogs || shelfDragging || dockDrag || entry.isPalette || entry.edgeMode === 'fold' ||
+  if (entry.pinned || settingsEntry || !state.prefs.foldOnOutsideClick || modalDialogs || shelfDragging || dockDrag || entry.isPalette || entry.edgeMode === 'fold' ||
       !entry.win.isVisible()) return;
   entry.win.webContents.send('edge-autofold');
 }
@@ -446,7 +507,7 @@ function startMonitor() {
 function displaysInfo() {
   const enabled = screen.getAllDisplays();
   return enabled.map((display, index) => ({
-    id: String(display.id), name: display.label || `شاشة ${index + 1}`,
+    id: String(display.id), name: display.id === screen.getPrimaryDisplay().id ? 'الشاشة الرئيسية' : `الشاشة ${index + 1}`,
     primary: display.id === screen.getPrimaryDisplay().id, config: displayConfig(display)
   }));
 }
@@ -738,8 +799,13 @@ function registerHandlers() {
     });
     return { state: saved, warning: changed && !activeKeys ? 'تعذر تسجيل واحد من اختصارات الكيبورد' : '' };
   });
+  handle('open-settings', entry => { if (!entry.isSettings) openSettings(entry); });
+  handle('close-settings', entry => { if (entry.isSettings) entry.win.close(); });
+  handle('settings-preview', (entry, value) => {
+    if (entry.isSettings) previewSettings(normalize(value));
+  });
   handle('geometry', (entry, value) => {
-    if (!windowsOS || !Array.isArray(value) || value.length > 4 || !value.length) return;
+    if (entry.isSettings || !windowsOS || !Array.isArray(value) || value.length > 4 || !value.length) return;
     const valid = rect => rect && ['x', 'y', 'width', 'height'].every(key =>
       Number.isInteger(rect[key]) && rect[key] >= 0 && rect[key] <= 2000
     ) && rect.width > 0 && rect.height > 0;
@@ -784,11 +850,12 @@ function registerHandlers() {
     }
   });
   handle('edge-panel', (entry, mode) => {
-    if (entry.isPalette || !['fold', 'preview', 'pin'].includes(mode)) return;
+    if (entry.isPalette || !['fold', 'preview', 'pin', 'normal'].includes(mode)) return;
     if (mode === 'preview' && !entry.edgePanel) return;
-    entry.edgePanel = mode !== 'pin';
+    entry.edgePanel = mode === 'fold' || mode === 'preview';
     entry.edgeMode = mode;
-    entry.manual = mode === 'pin';
+    entry.pinned = mode === 'pin';
+    entry.manual = mode === 'pin' || mode === 'normal';
     entry.suppressed = false;
     entry.win.setSkipTaskbar(mode === 'fold');
     entry.win.setAlwaysOnTop(true);
@@ -883,7 +950,7 @@ else {
         const message = await openUpdatePrompt();
         if (message && !updateInfo) await whileModal(() => dialog.showMessageBox({ title: 'تحديثات رواء', message }));
       } },
-      { label: 'تصغير بجانب الساعة', click: () => minimizeToTray(launcherEntries().find(entry => entry.win.isFocused())) },
+      { label: 'تصغير بجانب الساعة', click: () => minimizeToTray(launcherEntries().find(entry => !entry.isSettings && entry.win.isFocused())) },
       { type: 'separator' },
       { label: 'اخفاء كلي (خروج)', click: () => app.quit() }
     ]));

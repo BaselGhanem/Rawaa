@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('rawaa', {
   removeShelf: id => ipcRenderer.invoke('shelf-remove', id),
   openShelf: id => ipcRenderer.invoke('shelf-open', id),
   dragShelf: id => ipcRenderer.send('shelf-drag', id),
+  openSettings: () => ipcRenderer.invoke('open-settings'),
+  closeSettings: () => ipcRenderer.invoke('close-settings'),
+  settingsPreview: draft => ipcRenderer.invoke('settings-preview', draft),
   dockDrag: action => ipcRenderer.invoke('dock-drag', action),
   edgePanel: mode => ipcRenderer.invoke('edge-panel', mode),
   minimizeToTray: () => ipcRenderer.invoke('minimize-to-tray'),
@@ -21,7 +24,7 @@ contextBridge.exposeInMainWorld('rawaa', {
   backup: action => ipcRenderer.invoke('backup', action),
   updates: () => ipcRenderer.invoke('updates'),
   on: (event, callback) => {
-    if (['state', 'search-focus', 'edge-open', 'edge-autofold', 'dock-landed', 'tray-motion', 'update-status', 'update-version', 'shelf-changed', 'shelf-error'].includes(event)) {
+    if (['state', 'search-focus', 'edge-open', 'edge-autofold', 'dock-landed', 'tray-motion', 'update-status', 'update-version', 'settings-preview', 'settings-visibility', 'shelf-changed', 'shelf-error'].includes(event)) {
       ipcRenderer.on(event, (_event, value) => callback(value));
     }
   }
