@@ -59,7 +59,7 @@ async function setEdgeMode(mode) {
       { scale: .84, rotate: `-12deg` }, { scale: 1.12, rotate: `5deg`, offset: .55 }, { scale: 1, rotate: `0deg` }
     ]);
   } else {
-    const full = { opacity: 1, translate: `0`, scale: 1, clipPath: `inset(0 round 30px)` };
+    const full = { opacity: 1, translate: `0`, scale: 1, clipPath: `inset(0 round ${getComputedStyle(shell).borderTopLeftRadius})` };
     const tucked = {
       opacity: 0,
       translate: top ? `0 -24px` : `${left ? -30 : 30}px`,
@@ -1053,7 +1053,9 @@ function reportGeometry() {
     const bottom = top + height;
     const x = Math.max(0, Math.floor(left));
     const y = Math.max(0, Math.floor(top));
-    return { x, y, width: Math.min(innerWidth, Math.ceil(right)) - x, height: Math.min(innerHeight, Math.ceil(bottom)) - y };
+    const radius = Math.max(0, Math.round(parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0));
+    return { x, y, width: Math.min(innerWidth, Math.ceil(right)) - x,
+      height: Math.min(innerHeight, Math.ceil(bottom)) - y, radius };
   });
   api.geometry(boxes.filter(box => box.width > 0 && box.height > 0)).catch(() => {});
 }

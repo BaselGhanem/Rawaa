@@ -543,7 +543,7 @@ body.dock-top .shell.edge-preview {
   align-items: center;
   padding: 7px 10px;
   gap: 7px;
-  border-radius: 24px;
+  border-radius: 999px;
 }
 body.dock-top .shell.edge-preview { top: 6px; }
 body.dock-top .brand {
@@ -638,10 +638,12 @@ body.dock-top .footer .row {
 .dock-top .foot-row span, .dock-top #date-label, .dock-top #date .tail { display: none; }
 body.dock-top .clock #time { font-size: 17px; }
 body.dock-top .shell.sheet-open {
+  border-radius: 26px;
   width: min(580px, calc(100% - 24px));
   height: min(510px, calc(100% - 24px));
 }
 body.dock-top .shell.calendar-open {
+  border-radius: 26px;
   min-width: min(326px, calc(100% - 24px));
   padding-bottom: min(274px, calc(100vh - 75px));
 }

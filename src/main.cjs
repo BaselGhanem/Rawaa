@@ -806,15 +806,14 @@ function registerHandlers() {
   });
   handle('geometry', (entry, value) => {
     if (entry.isSettings || !windowsOS || !Array.isArray(value) || value.length > 4 || !value.length) return;
-    const valid = rect => rect && ['x', 'y', 'width', 'height'].every(key =>
+    const valid = rect => rect && ['x', 'y', 'width', 'height', 'radius'].every(key =>
       Number.isInteger(rect[key]) && rect[key] >= 0 && rect[key] <= 2000
     ) && rect.width > 0 && rect.height > 0;
     if (!value.every(valid)) return;
     const signature = JSON.stringify(value);
     if (entry.shape === signature) return;
-    const radii = [entry.isPalette ? 24 : 30, 14, 11, 11];
-    const regions = value.flatMap(({ x, y, width, height }, index) => {
-      const radius = Math.min(radii[index], Math.floor(width / 2), Math.floor(height / 2));
+    const regions = value.flatMap(({ x, y, width, height, radius: requestedRadius }) => {
+      const radius = Math.min(requestedRadius, Math.floor(width / 2), Math.floor(height / 2));
       const parts = [];
       for (let row = 0; row < radius; row++) {
         const pad = Math.floor(radius - Math.sqrt(radius ** 2 - (radius - row - .5) ** 2));
