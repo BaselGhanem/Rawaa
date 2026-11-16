@@ -201,7 +201,12 @@ function styles() {
   root.setProperty('--alpha', `${prefs.opacity / 100}`);
   root.setProperty('--icon', `${prefs.iconSize}px`);
   root.setProperty('--gap', `${prefs.gap}px`);
-  document.body.classList.toggle('compact', preview?.display.compact ?? compact);
+  const compactView = preview?.display.compact ?? compact;
+  document.body.classList.toggle('compact', compactView);
+  const toggle = $(`compact-toggle`);
+  toggle.title = compactView ? `الوضع المكبر` : `الوضع المصغر`;
+  toggle.setAttribute(`aria-label`, toggle.title);
+  toggle.replaceChildren(icon(compactView ? `arrows-out` : `arrows-in`));
   document.body.classList.toggle('pebbly', prefs.theme === 'pebbly');
   document.body.classList.toggle('dock-top', !isPalette && config().side === 'top');
   document.body.classList.toggle('left', config().side === 'left');
@@ -1159,6 +1164,7 @@ function wire() {
       edgeTimer = setTimeout(() => setEdgeMode(`fold`), 420);
     }
   });
+  $(`compact-toggle`).addEventListener(`click`, () => setCompact(!(preview?.display.compact ?? compact)));
   $(`edge-minimize`).addEventListener(`click`, () => setEdgeMode(edgeMode === `preview` ? `pin` : `fold`));
   $(`update-available`).addEventListener(`click`, async () => {
     try { toast(await api.updates()); } catch (error) { errorMessage(error); }

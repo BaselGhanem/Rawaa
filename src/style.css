@@ -737,7 +737,10 @@ body.dock-top #shelf-button .tail {
   color: #b7cecb;
 }
 #edge-minimize:hover { background: #ffffff12; color: #f1fffd; }
-body.compact:not(.dock-top) #edge-minimize { position: absolute; inset: 0 auto auto 0; }
+.brand-actions { display: flex; flex: none; align-items: center; gap: 3px; }
+.brand-actions #compact-toggle { background: transparent; color: #b7cecb; }
+.brand-actions #compact-toggle:hover { background: #ffffff12; color: #f1fffd; }
+body.compact:not(.dock-top) .brand-actions { justify-content: center; width: 100%; }
 
 #update-available { color: var(--accent); }
 #edge-handle.has-update { background: linear-gradient(180deg, #bde8dc, #099999); }
