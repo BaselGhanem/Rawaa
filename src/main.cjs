@@ -743,12 +743,12 @@ async function itemIcon(item) {
   const name = item.name.trim();
   const calculator = /^appx:Microsoft\.WindowsCalculator_|(?:^|[\\/])(?:calc|calculatorapp)\.exe$/i.test(target)
     || /^(calculator|الحاسبة)$/i.test(name);
-  if (calculator) return nativeImage.createFromPath(path.join(__dirname, 'calculator-icon.png')).toDataURL();
+  if (calculator) return transparentIcon(nativeImage.createFromPath(path.join(__dirname, 'calculator-icon.png')));
   if (/^close[ _-]?pilot$/i.test(name) || /(?:^|[\\/])close[ _-]?pilot\.exe$/i.test(target)) {
-    return nativeImage.createFromPath(path.join(__dirname, 'closepilot-icon.png')).toDataURL();
+    return transparentIcon(nativeImage.createFromPath(path.join(__dirname, 'closepilot-icon.png')));
   }
   const excel = /(?:^|[\\/])excel\.exe$/i.test(target) || /^(?:microsoft )?excel(?: \d{4})?$/i.test(name);
-  if (excel) return nativeImage.createFromPath(path.join(__dirname, 'excel-icon.png')).toDataURL();
+  if (excel) return transparentIcon(nativeImage.createFromPath(path.join(__dirname, 'excel-icon.png')));
   return fileIcon(packagedIconPaths.get(target) || target);
 }
 
@@ -805,7 +805,7 @@ function registerHandlers() {
     if (entry.isSettings) previewSettings(normalize(value));
   });
   handle('geometry', (entry, value) => {
-    if (entry.isSettings || !windowsOS || !Array.isArray(value) || value.length > 4 || !value.length) return;
+    if (entry.isSettings || !windowsOS || !Array.isArray(value) || value.length > 5 || !value.length) return;
     const valid = rect => rect && ['x', 'y', 'width', 'height', 'radius'].every(key =>
       Number.isInteger(rect[key]) && rect[key] >= 0 && rect[key] <= 2000
     ) && rect.width > 0 && rect.height > 0;

@@ -1043,7 +1043,7 @@ function animate(node, frames) {
 }
 
 function reportGeometry() {
-  const boxes = ['shell', 'tip', 'toast', 'edge-handle'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
+  const boxes = ['shell', 'tip', 'toast', 'edge-handle', 'brand-actions'].filter(id => !$(id).hidden && getComputedStyle($(id)).visibility !== 'hidden').map(id => {
     const node = $(id);
     const horizontalShell = id === 'shell' && document.body.classList.contains('dock-top');
     const { left, top, width, height } = horizontalShell
@@ -1063,6 +1063,10 @@ function reportGeometry() {
 function wire() {
   const shell = $('shell');
   const grip = $(`spaces`);
+  const gripArea = grip.parentElement;
+  for (const event of [`pointerenter`, `pointerleave`, `focusin`, `focusout`]) {
+    gripArea.addEventListener(event, () => requestAnimationFrame(reportGeometry));
+  }
   shelfDropTarget(grip);
   shelfDropTarget($(`edge-handle`));
   $(`shelf-button`).addEventListener(`click`, openShelf);
