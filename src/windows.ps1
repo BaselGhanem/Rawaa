@@ -133,6 +133,9 @@ if ($Action -eq 'list') {
 if ($Action -eq 'monitor') {
     $pressed = $false
     $previous = ''
+    $previousApps = ''
+    $nextAppCheck = 0
+    $clock = [Diagnostics.Stopwatch]::StartNew()
     while ($true) {
         $mouseDown = ([Native]::GetAsyncKeyState(1) -lt 0) -or ([Native]::GetAsyncKeyState(2) -lt 0)
         if ($mouseDown -and !$pressed) {
@@ -153,6 +156,18 @@ if ($Action -eq 'monitor') {
         if ($current -ne $previous) {
             [Console]::WriteLine($current)
             $previous = $current
+        }
+        if ($clock.ElapsedMilliseconds -ge $nextAppCheck) {
+            $nextAppCheck = $clock.ElapsedMilliseconds + 1500
+            $appIds = @(foreach ($entry in [Native]::OpenApps($OwnerPid)) {
+                $entry[0]
+                if ($entry[1] -and $entry[1] -notlike '*\ApplicationFrameHost.exe') { $entry[1] }
+            })
+            $currentApps = ConvertTo-Json -InputObject @($appIds | Sort-Object -Unique) -Compress
+            if ($currentApps -ne $previousApps) {
+                [Console]::WriteLine(('apps {0}' -f $currentApps))
+                $previousApps = $currentApps
+            }
         }
         Start-Sleep -Milliseconds 35
     }

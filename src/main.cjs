@@ -34,6 +34,10 @@ function launcherEntries() {
 let monitor;
 let interval;
 let foreground;
+let openTargets = new Set();
+let runningIds = [];
+let runningRevision = 0;
+const shortcutExecutables = new Map();
 let modalDialogs = 0;
 let shelfDragging = false;
 let quitting = false;
@@ -107,6 +111,7 @@ function saveConfiguration(next) {
       refreshTrayTitle();
     }
     if (keysChanged) registerKeys();
+    refreshRunningApps();
     for (const { win } of launcherEntries()) if (!win.isDestroyed()) win.webContents.send('state', state);
     return state;
   });
@@ -485,11 +490,51 @@ async function whileModal(action) {
   finally { modalDialogs--; }
 }
 
+function appTargetKey(target) {
+  return path.win32.normalize(target).toLowerCase();
+}
+
+async function refreshRunningApps() {
+  const revision = ++runningRevision;
+  const targets = openTargets;
+  const matches = await Promise.all(state.items.map(async item => {
+    if (item.kind !== 'app' || !targets.size) return null;
+    const key = appTargetKey(item.target);
+    if (targets.has(key)) return item.id;
+    if (path.win32.extname(key) !== '.lnk') return null;
+    if (!shortcutExecutables.has(key)) {
+      if (shortcutExecutables.size >= 250) shortcutExecutables.delete(shortcutExecutables.keys().next().value);
+      shortcutExecutables.set(key, executable(item).catch(() => ''));
+    }
+    const pending = shortcutExecutables.get(key);
+    const resolved = await pending;
+    if (!resolved && shortcutExecutables.get(key) === pending) shortcutExecutables.delete(key);
+    return resolved && targets.has(appTargetKey(resolved)) ? item.id : null;
+  }));
+  if (revision !== runningRevision || quitting) return;
+  const next = matches.filter(Boolean).sort();
+  if (next.length === runningIds.length && next.every((id, index) => id === runningIds[index])) return;
+  runningIds = next;
+  for (const { win } of launcherEntries()) {
+    if (!win.isDestroyed()) win.webContents.send('running-apps', runningIds);
+  }
+}
+
 function startMonitor() {
   if (!windowsOS || quitting) return;
-  monitor = spawn(ps, args('monitor'), { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  monitor = spawn(ps, args('monitor', ['-OwnerPid', String(process.pid)]), { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
   const lines = require('node:readline').createInterface({ input: monitor.stdout });
   lines.on('line', line => {
+    if (line.startsWith('apps ')) {
+      try {
+        const targets = JSON.parse(line.slice(5));
+        if (Array.isArray(targets)) {
+          openTargets = new Set(targets.filter(target => typeof target === 'string').map(appTargetKey));
+          refreshRunningApps();
+        }
+      } catch (error) { console.error('Rawaa open windows:', error.message); }
+      return;
+    }
     const click = /^click (-?\d+) (-?\d+)$/.exec(line);
     if (click) {
       handleOutsideClick(screen.screenToDipPoint({ x: Number(click[1]), y: Number(click[2]) }));
@@ -500,6 +545,8 @@ function startMonitor() {
   monitor.on('error', () => { foreground = null; });
   monitor.once('close', () => {
     foreground = null;
+    openTargets = new Set();
+    refreshRunningApps();
     if (!quitting) setTimeout(startMonitor, 5000).unref();
   });
 }
@@ -795,7 +842,7 @@ function registerHandlers() {
     return fn(entry, value);
   });
   handle('break-timer', entry => showBreakTimer(entry));
-  handle('load', () => ({ state, displays: displaysInfo(), version: app.getVersion(), updateStatus, updateVersion: updateInfo?.version || '', shelf: shelfItems() }));
+  handle('load', () => ({ state, displays: displaysInfo(), version: app.getVersion(), updateStatus, updateVersion: updateInfo?.version || '', shelf: shelfItems(), runningIds }));
   handle('shelf-add', (_entry, paths) => addShelfFiles(paths));
   handle('shelf-remove', (_entry, id) => {
     shelf.delete(id);

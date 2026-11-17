@@ -20,6 +20,7 @@ let compact;
 let paletteIndex = 0;
 
 let dragged;
+let runningApps = new Set();
 let trayMotion;
 let shelf = [];
 let edgeMotion;
@@ -258,10 +259,18 @@ async function run(item, node) {
   finally { setTimeout(() => node?.classList.remove('launching'), Math.max(0, 420 - (performance.now() - started))); }
 }
 
+function paintRunningApp(node) {
+  const open = runningApps.has(node.dataset.shortcutId);
+  node.classList.toggle(`app-running`, open);
+  const name = node.dataset.tip;
+  node.setAttribute(`aria-label`, open ? `${name}، مفتوح حاليا` : name);
+}
+
 function makeItem(item) {
   const node = row(item.name, iconOptions.includes(item.icon) ? item.icon : kindIcons[item.kind], () => run(item, node));
   node.classList.add('shortcut-row');
   node.dataset.shortcutId = item.id;
+  paintRunningApp(node);
   nativeIcon(item, node);
   node.draggable = true;
   node.addEventListener('dragstart', event => {
@@ -1273,6 +1282,11 @@ function showUpdateAvailability(updateVersion) {
 api.load().then(data => {
   ({ state, displays, version, updateStatus } = data);
   compact = !isPalette && config().compact;
+  runningApps = new Set(data.runningIds);
+  api.on(`running-apps`, ids => {
+    runningApps = new Set(ids);
+    $(`entry-list`).querySelectorAll(`[data-shortcut-id]`).forEach(paintRunningApp);
+  });
   api.on(`shelf-changed`, updateShelf);
   api.on(`shelf-error`, errorMessage);
   wire();
