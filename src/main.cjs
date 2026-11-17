@@ -926,7 +926,7 @@ function registerHandlers() {
     if (!value.every(valid)) return;
     const signature = JSON.stringify(value);
     if (entry.shape === signature) return;
-    const regions = value.flatMap(({ x, y, width, height, radius: requestedRadius }) => {
+    const regions = value.flatMap(({ x, y, width, height, radius: requestedRadius, antialias }) => {
       const radius = Math.min(requestedRadius, Math.floor(width / 2), Math.floor(height / 2));
       const parts = [];
       for (let row = 0; row < radius; row++) {
@@ -935,7 +935,16 @@ function registerHandlers() {
         parts.push({ x: x + pad, y: y + height - row - 1, width: width - 2 * pad, height: 1 });
       }
       if (height > 2 * radius) parts.push({ x, y: y + radius, width, height: height - 2 * radius });
-      return parts;
+      if (antialias !== true) return parts;
+      // Leave transparent room around the browser-painted curve at fractional display scales.
+      const allowance = 2;
+      return parts.map(rect => {
+        const left = Math.max(0, rect.x - allowance);
+        const top = Math.max(0, rect.y - allowance);
+        const right = Math.min(bounds.width, rect.x + rect.width + allowance);
+        const bottom = Math.min(bounds.height, rect.y + rect.height + allowance);
+        return { x: left, y: top, width: right - left, height: bottom - top };
+      });
     });
     const firstShape = !entry.shape;
     entry.win.setShape(regions);

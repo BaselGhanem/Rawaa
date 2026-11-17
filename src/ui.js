@@ -1061,7 +1061,7 @@ function reportGeometry() {
     const y = Math.max(0, Math.floor(top));
     const radius = Math.max(0, Math.round(parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0));
     return { x, y, width: Math.min(innerWidth, Math.ceil(right)) - x,
-      height: Math.min(innerHeight, Math.ceil(bottom)) - y, radius };
+      height: Math.min(innerHeight, Math.ceil(bottom)) - y, radius, antialias: horizontalShell };
   });
   api.geometry(boxes.filter(box => box.width > 0 && box.height > 0)).catch(() => {});
 }
