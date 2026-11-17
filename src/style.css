@@ -894,9 +894,21 @@ body.dock-top .search-icon { flex-basis: 33px; }
   transform: translateY(-50%);
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(circle at 35% 20%, #d0ffef35, #09999924 65%, #09999912);
-  box-shadow: inset 0 0 0 1px #b2f1e84d, 0 1px 6px #092b29a0;
+  background: radial-gradient(circle at 32% 18%, #d0ffef65, #09999946 65%, #09999922);
+  box-shadow: inset 0 0 0 1px #b2f1e887, inset 0 2px 7px #caffee25, 0 1px 6px #092b29a0;
 }
 body:is(.compact, .dock-top) .shortcut-row.app-running:not(.target)::before {
   inset-inline-start: calc(50% - (var(--icon) + 10px) / 2);
+}
+
+
+body.compact #entry-list .shortcut-row:not(.target),
+body.dock-top #entry-list .shortcut-row:not(.target) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+body:is(.compact, .dock-top) #entry-list .shortcut-row:hover > :is(i:first-child, img) {
+  filter: brightness(1.14);
+  transform: none;
 }

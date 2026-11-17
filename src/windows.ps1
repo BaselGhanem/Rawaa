@@ -1,4 +1,4 @@
-param([ValidateSet('monitor','activate','place','resolve','list')][string]$Action, [string]$Target, [int]$X, [int]$Y, [int]$Width, [int]$Height, [uint32]$OwnerPid)
+param([ValidateSet('monitor','activate','place','resolve','list','watch-apps')][string]$Action, [string]$Target, [int]$X, [int]$Y, [int]$Width, [int]$Height, [uint32]$OwnerPid)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 if ($Action -eq 'resolve') {
@@ -130,12 +130,28 @@ if ($Action -eq 'list') {
     exit
 }
 [void][Native]::SetThreadDpiAwarenessContext([IntPtr](-4))
+if ($Action -eq 'watch-apps') {
+    $previous = ''
+    while ($true) {
+        try {
+            $appIds = @(foreach ($entry in [Native]::OpenApps($OwnerPid)) {
+                $entry[0]
+                if ($entry[1] -and $entry[1] -notlike '*\ApplicationFrameHost.exe') { $entry[1] }
+            })
+            $snapshot = ConvertTo-Json -InputObject @($appIds | Sort-Object -Unique) -Compress
+            if ($snapshot -ne $previous) {
+                [Console]::WriteLine($snapshot)
+                $previous = $snapshot
+            }
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+        }
+        Start-Sleep -Milliseconds 1500
+    }
+}
 if ($Action -eq 'monitor') {
     $pressed = $false
     $previous = ''
-    $previousApps = ''
-    $nextAppCheck = 0
-    $clock = [Diagnostics.Stopwatch]::StartNew()
     while ($true) {
         $mouseDown = ([Native]::GetAsyncKeyState(1) -lt 0) -or ([Native]::GetAsyncKeyState(2) -lt 0)
         if ($mouseDown -and !$pressed) {
@@ -156,18 +172,6 @@ if ($Action -eq 'monitor') {
         if ($current -ne $previous) {
             [Console]::WriteLine($current)
             $previous = $current
-        }
-        if ($clock.ElapsedMilliseconds -ge $nextAppCheck) {
-            $nextAppCheck = $clock.ElapsedMilliseconds + 1500
-            $appIds = @(foreach ($entry in [Native]::OpenApps($OwnerPid)) {
-                $entry[0]
-                if ($entry[1] -and $entry[1] -notlike '*\ApplicationFrameHost.exe') { $entry[1] }
-            })
-            $currentApps = ConvertTo-Json -InputObject @($appIds | Sort-Object -Unique) -Compress
-            if ($currentApps -ne $previousApps) {
-                [Console]::WriteLine(('apps {0}' -f $currentApps))
-                $previousApps = $currentApps
-            }
         }
         Start-Sleep -Milliseconds 35
     }

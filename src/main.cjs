@@ -32,6 +32,7 @@ function launcherEntries() {
   return [...windows.values(), ...[palette, settingsEntry].filter(Boolean)];
 }
 let monitor;
+let appWatcher;
 let interval;
 let foreground;
 let openTargets = new Set();
@@ -498,7 +499,8 @@ async function refreshRunningApps() {
   const revision = ++runningRevision;
   const targets = openTargets;
   const matches = await Promise.all(state.items.map(async item => {
-    if (item.kind !== 'app' || !targets.size) return null;
+    if (!targets.size || (item.kind !== 'app' && item.kind !== 'file')) return null;
+    if (item.kind === 'file' && !/\.(?:lnk|exe)$/i.test(item.target)) return null;
     const key = appTargetKey(item.target);
     if (targets.has(key)) return item.id;
     if (path.win32.extname(key) !== '.lnk') return null;
@@ -520,21 +522,34 @@ async function refreshRunningApps() {
   }
 }
 
+function watchOpenApps() {
+  if (!windowsOS || quitting) return;
+  appWatcher = spawn(ps, args('watch-apps', ['-OwnerPid', String(process.pid)]), {
+    windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const lines = require('node:readline').createInterface({ input: appWatcher.stdout });
+  lines.on('line', line => {
+    try {
+      const snapshot = JSON.parse(line);
+      if (!Array.isArray(snapshot)) return;
+      openTargets = new Set(snapshot.filter(target => typeof target === 'string').map(appTargetKey));
+      refreshRunningApps();
+    } catch (error) { console.error('Rawaa open windows:', error.message); }
+  });
+  appWatcher.stderr.on('data', data => console.error('Rawaa open windows:', data.toString().trim()));
+  appWatcher.on('error', error => console.error('Rawaa open windows:', error.message));
+  appWatcher.once('close', () => {
+    openTargets = new Set();
+    refreshRunningApps();
+    if (!quitting) setTimeout(watchOpenApps, 5000).unref();
+  });
+}
+
 function startMonitor() {
   if (!windowsOS || quitting) return;
   monitor = spawn(ps, args('monitor', ['-OwnerPid', String(process.pid)]), { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
   const lines = require('node:readline').createInterface({ input: monitor.stdout });
   lines.on('line', line => {
-    if (line.startsWith('apps ')) {
-      try {
-        const targets = JSON.parse(line.slice(5));
-        if (Array.isArray(targets)) {
-          openTargets = new Set(targets.filter(target => typeof target === 'string').map(appTargetKey));
-          refreshRunningApps();
-        }
-      } catch (error) { console.error('Rawaa open windows:', error.message); }
-      return;
-    }
     const click = /^click (-?\d+) (-?\d+)$/.exec(line);
     if (click) {
       handleOutsideClick(screen.screenToDipPoint({ x: Number(click[1]), y: Number(click[2]) }));
@@ -545,8 +560,6 @@ function startMonitor() {
   monitor.on('error', () => { foreground = null; });
   monitor.once('close', () => {
     foreground = null;
-    openTargets = new Set();
-    refreshRunningApps();
     if (!quitting) setTimeout(startMonitor, 5000).unref();
   });
 }
@@ -1013,6 +1026,7 @@ else {
     quitting = true;
     clearInterval(interval);
     monitor?.kill();
+    appWatcher?.kill();
     globalShortcut.unregisterAll();
   });
   app.whenReady().then(async () => {
@@ -1048,6 +1062,7 @@ else {
     screen.on('display-metrics-changed', syncWindows);
     interval = setInterval(tick, 100);
     startMonitor();
+    watchOpenApps();
     setupUpdates();
   }).catch(error => {
     dialog.showErrorBox('Rawaa', error.message);
