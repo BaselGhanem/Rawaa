@@ -969,9 +969,9 @@ function clock() {
   $(`time`).textContent = reading;
   $(`clock-period`).textContent = parts.find(part => part.type === `dayPeriod`)?.value || ``;
   $(`clock-period`).hidden = !prefs.hour12;
-  $(`date`).setAttribute(`aria-label`, `${time}، فتح التقويم`);
+  $(`date`).setAttribute(`aria-label`, `${time}، فتح التقويم، كبسة يمين لمؤقت الاستراحة`);
   $('date-label').textContent = new Intl.DateTimeFormat('ar-JO', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
-  $('date').dataset.tip = `${time} · التقويم`;
+  $('date').dataset.tip = `${time} · كبسة يمين لمؤقت الاستراحة`;
 }
 
 function toggleCalendar(open = $(`clock-calendar`).hidden) {
@@ -1177,6 +1177,10 @@ function wire() {
   });
   $('space-name').addEventListener('click', spaces);
   $(`date`).addEventListener(`click`, () => toggleCalendar());
+  $(`date`).addEventListener(`contextmenu`, event => {
+    event.preventDefault();
+    api.breakTimer().catch(errorMessage);
+  });
   $('add').addEventListener('click', addMenu);
   $('settings').addEventListener('click', () => api.openSettings().catch(errorMessage));
   $(`search-icon`).addEventListener(`click`, () => {

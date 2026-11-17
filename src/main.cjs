@@ -24,6 +24,7 @@ let dockDrag;
 let dockPreview;
 let trayTransition;
 let palette;
+let breakWindow;
 let settingsEntry;
 let settingsPreview;
 
@@ -756,6 +757,36 @@ async function itemIcon(item) {
   return fileIcon(packagedIconPaths.get(target) || target);
 }
 
+function showBreakTimer(entry) {
+  if (breakWindow && !breakWindow.isDestroyed()) {
+    breakWindow.show();
+    breakWindow.focus();
+    return;
+  }
+  const { x, y, width, height } = screen.getDisplayMatching(entry.win.getBounds()).bounds;
+  const win = new BrowserWindow({
+    x, y, width, height, show: false, frame: false, fullscreen: true,
+    backgroundColor: '#071918', autoHideMenuBar: true, title: 'مؤقت الاستراحة',
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
+  });
+  breakWindow = win;
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', event => event.preventDefault());
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'Escape' && input.type === 'keyDown') {
+      event.preventDefault();
+      win.close();
+    }
+  });
+  win.once('ready-to-show', () => win.show());
+  win.once('closed', () => { breakWindow = undefined; });
+  win.loadFile(path.join(__dirname, 'break-timer.html')).catch(error => {
+    if (!win.isDestroyed()) win.destroy();
+    console.error('Rawaa break timer:', error.message);
+  });
+}
+
 function registerHandlers() {
   const senderEntry = event => launcherEntries().find(candidate => candidate.win.webContents === event.sender);
   const handle = (channel, fn) => ipcMain.handle(channel, (event, value) => {
@@ -763,6 +794,7 @@ function registerHandlers() {
     if (!entry || event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid sender');
     return fn(entry, value);
   });
+  handle('break-timer', entry => showBreakTimer(entry));
   handle('load', () => ({ state, displays: displaysInfo(), version: app.getVersion(), updateStatus, updateVersion: updateInfo?.version || '', shelf: shelfItems() }));
   handle('shelf-add', (_entry, paths) => addShelfFiles(paths));
   handle('shelf-remove', (_entry, id) => {

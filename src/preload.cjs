@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('rawaa', {
   removeShelf: id => ipcRenderer.invoke('shelf-remove', id),
   openShelf: id => ipcRenderer.invoke('shelf-open', id),
   dragShelf: id => ipcRenderer.send('shelf-drag', id),
+  breakTimer: () => ipcRenderer.invoke('break-timer'),
   openSettings: () => ipcRenderer.invoke('open-settings'),
   closeSettings: () => ipcRenderer.invoke('close-settings'),
   settingsPreview: draft => ipcRenderer.invoke('settings-preview', draft),

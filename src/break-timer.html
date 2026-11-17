@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; font-src 'self'; script-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>مؤقت الاستراحة</title>
+  <link rel="stylesheet" href="../node_modules/@fontsource/almarai/400.css">
+  <link rel="stylesheet" href="../node_modules/@fontsource/almarai/700.css">
+  <link rel="stylesheet" href="break-timer.css">
+  <script src="break-timer.js" defer></script>
+</head>
+<body data-phase="setup">
+  <header>
+    <div class="brand"><img src="rawaa.png" alt=""><span>رواء</span></div>
+    <button type="button" id="exit" class="exit" aria-label="اغلاق مؤقت الاستراحة" title="اغلاق · Esc">×</button>
+  </header>
+  <main>
+    <h1 id="heading" aria-live="polite">استراحة</h1>
+    <div class="digits" dir="ltr" role="timer" aria-live="off">
+      <span id="minutes">10</span><span class="colon">:</span><span id="seconds">00</span>
+    </div>
+    <progress id="progress" max="1" value="1" aria-label="الوقت المتبقي"></progress>
+    <p id="detail" class="detail" hidden></p>
+    <form id="setup">
+      <div class="presets" role="group" aria-label="مدد جاهزة">
+        <button type="button" data-minutes="5" aria-pressed="false">5 د</button>
+        <button type="button" data-minutes="10" aria-pressed="true">10 د</button>
+        <button type="button" data-minutes="15" aria-pressed="false">15 د</button>
+        <button type="button" data-minutes="20" aria-pressed="false">20 د</button>
+      </div>
+      <label class="duration">المدة بالدقائق <input id="duration" type="number" min="1" max="180" step="1" value="10" required dir="ltr"></label>
+      <button type="submit" class="primary">ابدأ الاستراحة</button>
+    </form>
+    <div id="controls" hidden>
+      <button type="button" id="pause">ايقاف مؤقت</button>
+      <button type="button" id="reset">استراحة جديدة</button>
+    </div>
+  </main>
+</body>
+</html>

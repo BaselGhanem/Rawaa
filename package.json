@@ -1,11 +1,11 @@
 {
   "name": "rawaa",
-  "version": "1.0.30",
+  "version": "1.0.31",
   "description": "Rawaa desktop launcher for Windows 11",
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/ui.js && node --check src/store.cjs",
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/ui.js && node --check src/store.cjs && node --check src/break-timer.js",
     "dist": "electron-builder --win nsis --publish never"
   },
   "repository": {
