@@ -348,6 +348,7 @@ async function finishDockDrag(commit) {
     destination.edgePanel = false;
     destination.edgeMode = 'normal';
     destination.pinned = false;
+    destination.win.setAlwaysOnTop(true, 'floating');
     destination.win.setSkipTaskbar(false);
     if (destination.ready && (!windowsOS || destination.shape)) destination.win.webContents.send('dock-landed');
     else destination.dockLanding = true;
@@ -355,13 +356,28 @@ async function finishDockDrag(commit) {
   }
 }
 
+function keepPinnedVisible(entry, now) {
+  if (entry.suppressed) return;
+  const { win } = entry;
+  if (!win.isVisible()) win.showInactive();
+  if (!windowsOS || settingsEntry || modalDialogs || shelfDragging || breakWindow?.isVisible()) return;
+  if (now - (entry.lastRaisedAt || 0) < 1000) return;
+  entry.lastRaisedAt = now;
+  win.moveTop();
+}
+
 function tick() {
   if (quitting || trayOnly) return;
   if (dockDrag) { updateDockPreview(); return; }
+  const now = Date.now();
   const cursor = screen.getCursorScreenPoint();
   for (const display of screen.getAllDisplays()) {
     const entry = windows.get(display.id);
     if (!entry?.ready || (windowsOS && !entry.shape)) continue;
+    if (entry.pinned) {
+      keepPinnedVisible(entry, now);
+      continue;
+    }
     const settings = displayConfig(display);
     const bounds = entry.win.getBounds();
     const area = display.bounds;
@@ -375,7 +391,7 @@ function tick() {
     if (!inWindow && !entry.win.isFocused()) entry.revealed = false;
     const physical = windowsOS ? screen.dipToScreenRect(entry.win, display.bounds) : display.bounds;
     const fullscreen = state.prefs.hideFullscreen && covers(foreground, physical);
-    if (fullscreen && !entry.fullscreen && !entry.pinned) entry.overrideFullscreen = false;
+    if (fullscreen && !entry.fullscreen) entry.overrideFullscreen = false;
     entry.fullscreen = fullscreen;
     if (settingsEntry?.source === entry && entry.edgeMode !== 'fold') {
       if (!entry.win.isVisible()) entry.win.showInactive();
@@ -955,8 +971,14 @@ function registerHandlers() {
     entry.manual = mode === 'pin' || mode === 'normal';
     entry.suppressed = false;
     entry.win.setSkipTaskbar(mode === 'fold');
-    entry.win.setAlwaysOnTop(true);
-    if (mode === 'pin') entry.overrideFullscreen = true;
+    entry.win.setAlwaysOnTop(true, entry.pinned ? 'screen-saver' : 'floating');
+    if (entry.pinned) {
+      entry.lastRaisedAt = 0;
+      entry.overrideFullscreen = true;
+      keepPinnedVisible(entry, Date.now());
+    } else if (mode === 'normal') {
+      entry.overrideFullscreen = false;
+    }
   });
   handle('minimize-to-tray', entry => minimizeToTray(entry));
   handle('hide', entry => hideLauncher(entry));
