@@ -566,19 +566,21 @@ body.dock-top .brand .mark { flex-basis: 34px; height: 34px; }
 .dock-top .search-icon { flex-basis: 35px; min-height: 35px; }
 body.dock-top.compact .search-wrap { flex: 0 0 35px; }
 .dock-top .entries {
-  flex: 0 1 auto;
+  flex: 0 1 max-content;
   min-width: 0;
-  overflow: auto hidden;
-  scrollbar-width: none;
+  max-height: min(45vh, 250px);
+  overflow: hidden auto;
   scrollbar-gutter: auto;
   border-inline: 1px solid #ffffff19;
   padding-inline: 7px;
 }
 .dock-top #entry-list, .dock-top .group-items {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   width: max-content;
+  max-width: 100%;
+  min-width: 0;
   gap: 3px;
   padding-block: 6px;
 }
@@ -612,7 +614,8 @@ body.dock-top #entry-list .section::after {
 }
 .dock-top #entry-list .section:first-child:not(.target) { width: 0; }
 .dock-top #entry-list .section:first-child:not(.target)::after { visibility: hidden; }
-.dock-top .group-items { margin: 0; padding: 0; border: 0; }
+.dock-top .group-items { display: contents; }
+body.dock-top .shell.calendar-open .entries { max-height: min(22vh, 120px); }
 body.dock-top #entry-list .row.target { flex-basis: 52px; padding-inline-start: 12px; }
 body.dock-top #entry-list .section.target { width: 15px; }
 .dock-top #entry-list .target::before {
@@ -658,6 +661,16 @@ body.dock-top #edge-handle {
   width: 70px;
   height: 10px;
   border-radius: 0 0 10px 10px;
+}
+@media (max-width: 640px) {
+  body.dock-top .shell, body.dock-top .shell.edge-preview { flex-wrap: wrap; }
+  .dock-top .entries {
+    order: 1;
+    flex: 0 0 100%;
+    border-inline: 0;
+    border-block-start: 1px solid #ffffff19;
+  }
+  .dock-top #entry-list { margin-inline: auto; justify-content: center; }
 }
 @media (max-width: 480px) {
   .dock-top .wordmark { display: none; }
