@@ -122,8 +122,7 @@ function displayConfig(display) {
 function boundsFor(display, settings, prefs = state.prefs) {
   const area = display.workArea;
   if (settings.side === 'top') {
-    const width = Math.min(area.width, 880);
-    return { x: area.x + Math.round((area.width - width) / 2), y: area.y, width, height: Math.min(area.height, 560) };
+    return { x: area.x, y: area.y, width: area.width, height: Math.min(area.height, 560) };
   }
   const width = Math.min(area.width, prefs.width + 110);
   const height = Math.max(180, Math.min(760, area.height - 30));
@@ -741,6 +740,11 @@ async function fileIcon(target) {
 async function itemIcon(item) {
   const target = item.target;
   const name = item.name.trim();
+  const teams = /^appx:(?:msteams|microsoftteams)_|(?:^|[\\/])(?:ms-teams|msteams|teams)\.(?:exe|lnk)$/i.test(target)
+    || /^(?:microsoft\s+)?teams(?:\s*\([^)]*\))?$/i.test(name);
+  if (teams && item.kind === 'app') {
+    return transparentIcon(nativeImage.createFromPath(path.join(__dirname, 'teams-icon.png')));
+  }
   const calculator = /^appx:Microsoft\.WindowsCalculator_|(?:^|[\\/])(?:calc|calculatorapp)\.exe$/i.test(target)
     || /^(calculator|الحاسبة)$/i.test(name);
   if (calculator) return transparentIcon(nativeImage.createFromPath(path.join(__dirname, 'calculator-icon.png')));
@@ -806,9 +810,11 @@ function registerHandlers() {
   });
   handle('geometry', (entry, value) => {
     if (entry.isSettings || !windowsOS || !Array.isArray(value) || value.length > 5 || !value.length) return;
+    const bounds = entry.win.getBounds();
     const valid = rect => rect && ['x', 'y', 'width', 'height', 'radius'].every(key =>
-      Number.isInteger(rect[key]) && rect[key] >= 0 && rect[key] <= 2000
-    ) && rect.width > 0 && rect.height > 0;
+      Number.isInteger(rect[key]) && rect[key] >= 0
+    ) && rect.width > 0 && rect.height > 0 && rect.radius <= 2000 &&
+      rect.x + rect.width <= bounds.width && rect.y + rect.height <= bounds.height;
     if (!value.every(valid)) return;
     const signature = JSON.stringify(value);
     if (entry.shape === signature) return;
