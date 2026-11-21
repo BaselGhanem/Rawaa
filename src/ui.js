@@ -1321,6 +1321,16 @@ api.load().then(data => {
       { opacity: 1, translate: `0 0`, scale: 1 }
     ]);
   });
+  api.on(`refresh-geometry`, () => requestAnimationFrame(reportGeometry));
+  api.on(`restore-launcher`, async ({ mode, search }) => {
+    clearTimeout(edgeTimer);
+    trayMotion?.cancel();
+    edgeMotion?.cancel();
+    edgeMode = `restoring`;
+    await setEdgeMode(mode === `pin` ? `pin` : `normal`);
+    requestAnimationFrame(reportGeometry);
+    if (search) searchFocus();
+  });
   api.on(`edge-open`, mode => setEdgeMode(mode === `pin` ? `pin` : `preview`));
   api.on(`edge-autofold`, () => {
     if (edgeMode !== `pin` && !settingsOpen && !compact && !dragged) setEdgeMode(`fold`);

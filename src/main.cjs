@@ -164,8 +164,9 @@ function makeWindow(display, settings, isPalette = false) {
   if (!windowsOS && !isPalette) win.on('blur', () => requestAutoFold(entry));
   win.on('page-title-updated', event => event.preventDefault());
   win.webContents.on('will-navigate', event => event.preventDefault());
-  win.once('ready-to-show', () => {
+  win.on('ready-to-show', () => {
     entry.ready = true;
+    if (entry.pendingRestore) restoreEntry(entry, entry.pendingRestore.search);
     if (isPalette) revealPalette(entry);
     else {
       tick();
@@ -175,7 +176,27 @@ function makeWindow(display, settings, isPalette = false) {
       }
     }
   });
+  win.on(`unresponsive`, () => { entry.unresponsive = true; });
+  win.on(`responsive`, () => { entry.unresponsive = false; });
+  win.webContents.on(`did-stop-loading`, () => {
+    if (entry.pendingRestore && entry.ready) restoreEntry(entry, entry.pendingRestore.search);
+  });
+  win.webContents.on(`render-process-gone`, (_event, details) => {
+    entry.ready = false;
+    entry.shape = undefined;
+    entry.hitRegions = [];
+    if (quitting || win.isDestroyed()) return;
+    console.error(`Launcher renderer stopped: ${details.reason}`);
+    entry.pendingRestore = { search: false };
+    entry.recoveryAttempts = (entry.recoveryAttempts || 0) + 1;
+    if (entry.recoveryAttempts > 3) return;
+    clearTimeout(entry.recoveryTimer);
+    entry.recoveryTimer = setTimeout(() => {
+      if (!quitting && !win.isDestroyed()) win.reload();
+    }, 1000);
+  });
   win.on('closed', () => {
+    clearTimeout(entry.recoveryTimer);
     if (dockDrag?.entry === entry) finishDockDrag(false);
     if (palette === entry) palette = undefined;
     if (windows.get(display.id) === entry) windows.delete(display.id);
@@ -273,7 +294,11 @@ function syncWindows() {
     if (!entry) { makeWindow(display, settings); continue; }
     const bounds = boundsFor(display, settings);
     const current = entry.win.getBounds();
-    if (Object.keys(bounds).some(key => bounds[key] !== current[key])) entry.win.setBounds(bounds);
+    if (Object.keys(bounds).some(key => bounds[key] !== current[key])) {
+      entry.shape = undefined;
+      entry.win.setBounds(bounds);
+      entry.win.webContents.send(`refresh-geometry`);
+    }
   }
   tick();
 }
@@ -391,15 +416,15 @@ function tick() {
     if (!inWindow && !entry.win.isFocused()) entry.revealed = false;
     const physical = windowsOS ? screen.dipToScreenRect(entry.win, display.bounds) : display.bounds;
     const fullscreen = state.prefs.hideFullscreen && covers(foreground, physical);
-    if (fullscreen && !entry.fullscreen) entry.overrideFullscreen = false;
+    if (!fullscreen) entry.overrideFullscreen = false;
     entry.fullscreen = fullscreen;
     if (settingsEntry?.source === entry && entry.edgeMode !== 'fold') {
       if (!entry.win.isVisible()) entry.win.showInactive();
       continue;
     }
     if (entry.edgePanel) {
-      if (fullscreen && !entry.overrideFullscreen) entry.win.hide();
-      else if (!entry.win.isVisible()) entry.win.showInactive();
+      // The recovery handle must stay reachable even over fullscreen apps.
+      keepPinnedVisible(entry, now);
       continue;
     }
     const show = (!fullscreen || entry.overrideFullscreen) && (entry.manual || (!entry.suppressed && (settings.mode === 'fixed' || entry.revealed)));
@@ -410,40 +435,56 @@ function tick() {
   }
 }
 
+function restoreEntry(entry, search = false) {
+  if (!entry.ready || entry.win.webContents.isLoading()) {
+    entry.pendingRestore = { search };
+    return;
+  }
+  entry.pendingRestore = null;
+  entry.manual = true;
+  entry.revealed = true;
+  entry.suppressed = false;
+  entry.edgePanel = false;
+  entry.edgeMode = entry.pinned ? `pin` : `normal`;
+  entry.overrideFullscreen = true;
+  entry.win.setSkipTaskbar(false);
+  entry.win.setAlwaysOnTop(true, entry.pinned || entry.edgePanel ? `screen-saver` : `floating`);
+  entry.win.webContents.send(`restore-launcher`, { mode: entry.edgeMode, search });
+  if (entry.win.isMinimized()) entry.win.restore();
+  entry.win.show();
+  entry.win.moveTop();
+  entry.win.focus();
+}
+
 function showLauncher(search = false, restoreEdge = false) {
-  const restoring = trayOnly;
   clearTimeout(trayTransition);
-  if (restoring) {
-    trayOnly = false;
-    for (const entry of windows.values()) entry.suppressed = false;
-    tick();
-  }
+  trayOnly = false;
+  syncWindows();
   const preferred = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  if (search && state.prefs.searchView === 'palette') {
-    if (restoring) windows.forEach(entry => sendTrayMotion(entry, false));
-    return showPalette(preferred);
-  }
+  if (search && state.prefs.searchView === 'palette') return showPalette(preferred);
   const entry = windows.get(preferred.id) || [...windows.values()][0];
   if (!entry) return;
-  if (entry.edgePanel) {
-    entry.overrideFullscreen = true;
-    entry.win.show();
-    entry.win.webContents.send('edge-open', restoreEdge ? 'pin' : 'preview');
-    if (search) entry.win.webContents.send('search-focus');
-    return;
-  }
-  if (!restoring && !search && entry.win.isVisible() && entry.win.isFocused()) {
-    hideLauncher(entry);
-    return;
-  }
   entry.manual = true;
   entry.suppressed = false;
+  entry.revealed = true;
   entry.overrideFullscreen = true;
-  entry.win.show();
-  entry.win.focus();
-  if (restoring) windows.forEach(candidate => sendTrayMotion(candidate, false));
-  if (search) entry.win.webContents.send('search-focus');
+  entry.fullscreen = Boolean(state.prefs.hideFullscreen && covers(foreground,
+    windowsOS ? screen.dipToScreenRect(entry.win, preferred.bounds) : preferred.bounds));
+  entry.edgePanel = false;
+  entry.edgeMode = entry.pinned || restoreEdge ? 'pin' : 'normal';
+  entry.pinned = entry.edgeMode === 'pin';
+  entry.win.setSkipTaskbar(false);
+  entry.win.setAlwaysOnTop(true, entry.pinned || entry.edgePanel ? 'screen-saver' : 'floating');
+  if (entry.recoveryAttempts > 3 || entry.unresponsive) {
+    entry.recoveryAttempts = 0;
+    entry.unresponsive = false;
+    entry.pendingRestore = { search };
+    entry.win.reload();
+    return;
+  }
+  restoreEntry(entry, search);
 }
+
 
 function sendTrayMotion(entry, closing) {
   const trayBounds = tray?.getBounds();
@@ -950,6 +991,7 @@ function registerHandlers() {
     entry.win.setShape(regions);
     entry.hitRegions = regions;
     entry.shape = signature;
+    if (entry.pendingRestore && entry.ready) restoreEntry(entry, entry.pendingRestore.search);
     if (firstShape && entry.isPalette) revealPalette(entry);
     else if (firstShape) {
       tick();
@@ -980,13 +1022,11 @@ function registerHandlers() {
     entry.manual = mode === 'pin' || mode === 'normal';
     entry.suppressed = false;
     entry.win.setSkipTaskbar(mode === 'fold');
-    entry.win.setAlwaysOnTop(true, entry.pinned ? 'screen-saver' : 'floating');
+    entry.win.setAlwaysOnTop(true, entry.pinned || entry.edgePanel ? 'screen-saver' : 'floating');
     if (entry.pinned) {
       entry.lastRaisedAt = 0;
       entry.overrideFullscreen = true;
       keepPinnedVisible(entry, Date.now());
-    } else if (mode === 'normal') {
-      entry.overrideFullscreen = false;
     }
   });
   handle('minimize-to-tray', entry => minimizeToTray(entry));
@@ -1084,13 +1124,24 @@ else {
       { label: 'اخفاء كلي (خروج)', click: () => app.quit() }
     ]));
     tray.on('balloon-click', openUpdatePrompt);
-    tray.on('click', () => { if (trayOnly) showLauncher(); });
+    tray.on('click', () => showLauncher());
     registerHandlers();
     registerKeys();
     syncWindows();
     screen.on('display-added', syncWindows);
     screen.on('display-removed', syncWindows);
     screen.on('display-metrics-changed', syncWindows);
+    const resumeWindows = () => {
+      foreground = null;
+      syncWindows();
+      for (const entry of windows.values()) {
+        entry.win.setAlwaysOnTop(true, entry.pinned || entry.edgePanel ? `screen-saver` : `floating`);
+        entry.win.webContents.send(`refresh-geometry`);
+      }
+      tick();
+    };
+    powerMonitor.on(`resume`, resumeWindows);
+    powerMonitor.on(`unlock-screen`, resumeWindows);
     interval = setInterval(tick, 100);
     startMonitor();
     watchOpenApps();

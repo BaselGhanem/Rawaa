@@ -18,6 +18,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Visibility regression tests
+        run: npm test
       - name: Validate PowerShell syntax
         shell: pwsh
         run: |
